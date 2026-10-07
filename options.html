@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Nisfeb</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 14px/1.5 system-ui, sans-serif; max-width: 34rem; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.2rem; margin: 0 0 .25rem; }
+    p.sub { margin: 0 0 1.5rem; opacity: .7; }
+    label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
+    input { width: 100%; padding: .5rem; font: inherit; box-sizing: border-box; }
+    button { margin-top: 1.25rem; padding: .5rem 1rem; font: inherit; }
+    .note { margin-top: .35rem; font-size: .85em; opacity: .7; }
+    #status { margin-top: 1.5rem; padding: .75rem; border-left: 3px solid #f9a804; }
+    .bad { border-left-color: #c0392b !important; }
+  </style>
+</head>
+<body>
+  <h1>Nisfeb</h1>
+  <p class="sub">Your ship from any page. Everything here talks to the ship over its own authenticated HTTP API, with the same session cookie the ship's web apps use.</p>
+
+  <label for="origin">Ship URL</label>
+  <input id="origin" type="url" placeholder="http://localhost:8080" autocomplete="off">
+  <p class="note">The origin your ship serves on. Every request is built from it and nothing else.</p>
+
+  <label for="code">Access code (<code>+code</code> in the dojo)</label>
+  <input id="code" type="password" placeholder="lidlut-tabwed-pillex-ridrup" autocomplete="off">
+  <p class="note"><strong>Used once and never stored.</strong> It buys a session cookie from the ship, and the cookie is what the browser keeps. A ship restart invalidates it: connect again then.</p>
+
+  <button id="connect">Connect</button>
+  <button id="disconnect">Forget this ship</button>
+
+  <label for="model">Model for Ask (blank: the first one Armillary lists)</label>
+  <input id="model" placeholder="anthropic/claude-haiku-4.5" autocomplete="off">
+
+  <label for="okey">Orrery key (optional)</label>
+  <input id="okey" type="password" placeholder="paste a key minted in Orrery, with write" autocomplete="off">
+  <p class="note">Pages sent to Orrery are then written as this key, so every fact carries the extension's own name and the key's scope bounds what it may file. Mint one in Orrery under Clients, with <code>write</code>. It is kept in this browser and used for nothing else. Blank: pages are sent as you, with the session cookie.</p>
+
+  <label><input id="links" type="checkbox" style="width:auto"> Clickable Urbit links on web pages</label>
+  <p class="note">Turns <code>urb://</code> addresses and furum's <code>f/~host/board</code> into links on the pages you read: a furum board opens on your ship, and an <code>urb://</code> link keeps its own address (for Lattice or Talon on this computer) with a <strong>↗</strong> beside it to open it in Lattice on your ship. A script has to run on every page for this, so turning it on asks the browser for access to all sites. The script only reads page text and adds links; it sends nothing anywhere. Turning it off stops the script; the site access stays until you remove it in the browser's extension settings.</p>
+
+  <div id="status"></div>
+  <script src="options.js" type="module"></script>
+</body>
+</html>

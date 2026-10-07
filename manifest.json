@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Nisfeb",
+  "version": "0.1.0",
+  "description": "Your Urbit ship from any page: mail it with Auspex, note it in Orrery, keep it in Lattice, put it on the Calendar, ask Armillary.",
+  "author": "nisfeb",
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "notifications"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "Nisfeb",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/nisfeb-16.png", "32": "icons/nisfeb-32.png" }
+  },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "omnibox": { "keyword": "urb" },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+U" },
+      "description": "Open Nisfeb for this page"
+    }
+  },
+  "icons": {
+    "16": "icons/nisfeb-16.png",
+    "32": "icons/nisfeb-32.png",
+    "48": "icons/nisfeb-48.png",
+    "128": "icons/nisfeb-128.png"
+  }
+}

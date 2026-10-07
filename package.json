@@ -1,0 +1,12 @@
+{
+  "name": "nisfeb-extension",
+  "version": "0.1.0",
+  "description": "Nisfeb for Brave and Chrome: Auspex, Orrery, Lattice, Calendar and Armillary from any page, over the ship's own API.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "icons": "for s in 16 32 48 128; do rsvg-convert -w $s -h $s icon.svg -o icons/nisfeb-$s.png; done",
+    "smoke": "node scripts/smoke.js"
+  }
+}
