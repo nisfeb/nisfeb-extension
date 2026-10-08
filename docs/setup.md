@@ -43,7 +43,7 @@ The bar at the top has the keyboard when a new tab opens: type and press Enter t
 
 The **Assistant** card shows the answers to what you ask with the bar's **Assistant** button, from Armillary's model with your calendar and Orrery as its tools. Anything it would write (an event, a task, words for Orrery) is shown first and runs only when you press **Do it**. It needs an Armillary inference key on your ship, like **Ask**, and the model chosen for Ask in Options must be one that can call tools.
 
-To arrange the cards, press and drag one onto the place it should take. A long press or a right-click on a card starts arranging, as in Talon: arrows step a card, **×** takes it off the page, the header offers back the cards taken off, and **Done** ends it.
+To arrange the cards, press and drag one to any square of the grid, and drag its bottom-right corner to resize it. A long press or a right-click on a card starts arranging, as in Talon: arrows step a card a square, **×** takes it off the page, the header offers back the cards taken off, and **Done** ends it.
 
 Everything the page shows is set in **Options**, under **The day page**:
 
