@@ -24,6 +24,9 @@
 //    no settings     the page carries none: they are in Options
 //    the search box  Search and Research go to Brave Search's own
 //                    addresses (caught before they leave the machine)
+//    the keyboard    a fresh tab loads once more and its bar has the
+//                    keyboard; a reload does not; typed words with
+//                    Shift+Enter go to the assistant, Enter to Brave Search
 //    Brave Leo       Options shows Leo's form filled from a lease, the key
 //                    masked and copied only on its button, and says why
 //                    not on a proxy
@@ -579,6 +582,30 @@ try {
   check('bar: Assistant puts the card back and answers there', await assistantGone() === false && back.includes('Back again.') && caught.length === 1, back.slice(-300))
   check('bar: no Research button, and no box of the card\'s own', await evaluate("!document.getElementById('research') && !document.querySelector('#assistant input')", s2.sessionId) === true)
   await close(s2)
+
+  //  the keyboard: the bar has it in a fresh tab, Shift+Enter asks
+  const k1 = await page(['Search'])
+  await cdp('Page.bringToFront', {}, k1.sessionId)
+  await cdp('Fetch.enable', { patterns: [{ urlPattern: 'https://search.brave.com/*' }] }, k1.sessionId)
+  for (let i = 0; i < 25 && await evaluate("document.activeElement && document.activeElement.id", k1.sessionId) !== 'sq'; i++) await new Promise((r) => setTimeout(r, 200))
+  check('keyboard: a fresh tab loads once more and the bar has the keyboard', await evaluate("location.search === '?focus' && history.length === 2 && document.activeElement.id === 'sq'", k1.sessionId) === true,
+    await evaluate("JSON.stringify([location.search, history.length, document.activeElement && document.activeElement.id])", k1.sessionId))
+  const key = (extra) => ['keyDown', 'keyUp'].reduce((p, type) => p.then(() => cdp('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}), ...extra }, k1.sessionId)), Promise.resolve())
+  script.push({ role: 'assistant', content: 'Asked with Shift.' })
+  await cdp('Input.insertText', { text: 'what is on today' }, k1.sessionId)
+  await key({ modifiers: 8 })
+  check('keyboard: Shift+Enter asks the assistant', (await textOf(k1.sessionId, ['Asked with Shift.'])).includes('Asked with Shift.') && caught.length === 1 && completions.at(-1).body.messages.at(-1).content === 'what is on today', caught.join(' '))
+  await evaluate("document.getElementById('sq').focus()", k1.sessionId)
+  await cdp('Input.insertText', { text: 'lisbon hotels' }, k1.sessionId)
+  await key({})
+  for (let i = 0; i < 25 && caught.length < 2; i++) await new Promise((r) => setTimeout(r, 200))
+  check('keyboard: Enter searches with Brave', caught[1] === 'https://search.brave.com/search?q=lisbon%20hotels', caught.join(' '))
+  await close(k1)
+  const k2 = await page(['Search'])
+  await cdp('Page.reload', {}, k2.sessionId)
+  await new Promise((r) => setTimeout(r, 1500))
+  check('keyboard: a reload loads once, no second trip', await evaluate("location.search === '?focus' && history.length === 2", k2.sessionId) === true)
+  await close(k2)
 
   //  Brave Leo: its form from a lease, the key copied only on its button
   inference = { base_url: 'https://openrouter.example/api/v1', key: 'test-key-wxyz', mode: 'lease', models: ['m-one', 'm-two'] }

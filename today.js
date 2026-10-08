@@ -309,8 +309,8 @@ async function background() {
 //  ── the search box ───────────────────────────────────────────────────
 //
 //  One box for both: Enter (or Search) searches with Brave, in this tab
-//  as a new tab's search does, or with Ctrl or Cmd in another; Assistant
-//  hands the words to the assistant card.
+//  as a new tab's search does, or with Ctrl or Cmd in another; Shift+Enter
+//  (or Assistant) hands the words to the assistant card.
 
 function go(url, elsewhere) {
   if (elsewhere) chrome.tabs.create({ url })
@@ -319,6 +319,11 @@ function go(url, elsewhere) {
 let mod = false
 addEventListener('keydown', (e) => { mod = e.ctrlKey || e.metaKey })
 addEventListener('keyup', (e) => { mod = e.ctrlKey || e.metaKey })
+$('sq').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.shiftKey || e.isComposing) return
+  e.preventDefault()
+  $('toassist').click()
+})
 $('searchform').addEventListener('submit', (e) => {
   e.preventDefault()
   const q = $('sq').value.trim()
@@ -426,6 +431,8 @@ addEventListener('resize', paintClock)
 
 st = await chrome.storage.local.get(KEYS)
 render()
+//  the keyboard to the bar, once the page has it (boot.js)
+$('sq').focus()
 background()
 askWeather()
 refresh()

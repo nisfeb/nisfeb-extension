@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Today</title>
-  <script src="theme-boot.js"></script>
+  <script src="boot.js"></script>
   <style>
     /* Talon's built-in palette (Theme.kt), light or dark as the system is.
        A custom Talon theme, a mode chosen in Options, an accent or Talon's
@@ -112,9 +112,9 @@
   </header>
 
   <form class="searchbar" id="searchform" role="search" autocomplete="off">
-    <input id="sq" type="search" placeholder="Search with Brave, or ask your assistant" aria-label="Search with Brave, or ask your assistant">
-    <button class="primary">Search</button>
-    <button type="button" id="toassist" title="Ask your assistant, which knows your calendar and orrery">Assistant</button>
+    <input id="sq" type="search" autofocus placeholder="Search with Brave, or Shift+Enter to ask your assistant" aria-label="Search with Brave, or ask your assistant">
+    <button class="primary" title="Search with Brave (Enter)">Search</button>
+    <button type="button" id="toassist" title="Ask your assistant, which knows your calendar and orrery (Shift+Enter)">Assistant</button>
   </form>
 
   <main id="grid">
