@@ -437,7 +437,8 @@ try {
 
   //  the assistant: a read, a write on yes, a no, a failure, the history
   const call = (id, name, args) => ({ role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }] })
-  const askIt = (q) => evaluate(`(() => { document.getElementById('askq').value = ${JSON.stringify(q)}; document.getElementById('askform').requestSubmit() })()`, t.sessionId)
+  //  asked from the bar at the top, with its Assistant button
+  const askIt = (q) => evaluate(`(() => { document.getElementById('sq').value = ${JSON.stringify(q)}; document.getElementById('toassist').click() })()`, t.sessionId)
   const talkText = () => evaluate("document.getElementById('assistant').innerText", t.sessionId)
   const waitTalk = async (want) => { for (let i = 0; i < 50 && !(await talkText()).includes(want); i++) await new Promise((r) => setTimeout(r, 200)); return talkText() }
   script.push(call('c1', 'orrery_brief', {}), { role: 'assistant', content: 'Answer Dana about the lease; it is due Friday.' })
@@ -499,7 +500,7 @@ try {
   script.push(500)
   await askIt('and tomorrow?')
   said2 = await waitTalk('did not go through')
-  check('assistant: a model that fails is said, and the box is free again', said2.includes('That did not go through: the model fell over') && await evaluate("!document.getElementById('asksend').disabled", t.sessionId), said2)
+  check('assistant: a model that fails is said, and the box is free again', said2.includes('That did not go through: the model fell over') && await evaluate("!document.getElementById('toassist').disabled", t.sessionId), said2)
 
   const t4 = await page(['Answer Dana'])
   check('assistant: the history is there in a new tab', (await evaluate("document.getElementById('assistant').innerText", t4.sessionId)).includes('Lunch with Tom is on Saturday'))
@@ -566,11 +567,17 @@ try {
   for (let i = 0; i < 25 && !caught.length; i++) await new Promise((r) => setTimeout(r, 200))
   check('search: Enter goes to Brave Search', caught[0] === 'https://search.brave.com/search?q=lisbon%20flights', caught.join(' '))
   await close(s1)
+  //  the bar's Assistant brings the assistant card back when it was off
+  await evaluate("chrome.storage.local.set({ dayHidden: ['assistant'] })", ws1)
   const s2 = await page(['Search'])
-  await cdp('Fetch.enable', { patterns: [{ urlPattern: 'https://search.brave.com/*' }] }, s2.sessionId)
-  await evaluate("document.getElementById('sq').value = 'history of urbit'; document.getElementById('research').click()", s2.sessionId)
-  for (let i = 0; i < 25 && caught.length < 2; i++) await new Promise((r) => setTimeout(r, 200))
-  check('search: Research starts Ask Brave\'s Deep Research', caught[1] === 'https://search.brave.com/ask?q=history%20of%20urbit&enable_research=true', caught.join(' '))
+  const assistantGone = () => evaluate("document.getElementById('assistant').classList.contains('gone')", s2.sessionId)
+  check('bar: the assistant card can be off the page', await assistantGone() === true)
+  script.push({ role: 'assistant', content: 'Back again.' })
+  await evaluate("document.getElementById('sq').value = 'hello'; document.getElementById('toassist').click()", s2.sessionId)
+  for (let i = 0; i < 25 && await assistantGone(); i++) await new Promise((r) => setTimeout(r, 200))
+  const back = await textOf(s2.sessionId, ['Back again.'])
+  check('bar: Assistant puts the card back and answers there', await assistantGone() === false && back.includes('Back again.') && caught.length === 1, back.slice(-300))
+  check('bar: no Research button, and no box of the card\'s own', await evaluate("!document.getElementById('research') && !document.querySelector('#assistant input')", s2.sessionId) === true)
   await close(s2)
 
   //  Brave Leo: its form from a lease, the key copied only on its button

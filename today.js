@@ -7,7 +7,7 @@
 //  Talon's home page is (HomeScreen.kt); its settings live in Options.
 
 import { explain, patternFor } from './lib/ship.js'
-import { agenda, money, due, ordered, moved, searchUrl, researchUrl } from './lib/today.js'
+import { agenda, money, due, ordered, moved, searchUrl } from './lib/today.js'
 import { lookVars, fontOf, displayName, VARS, CACHE, BG_KEY, fontKey } from './lib/theme.js'
 import { skyFor, placeKey } from './lib/sky.js'
 import { drawDial } from './sky-dial.js'
@@ -308,8 +308,9 @@ async function background() {
 
 //  ── the search box ───────────────────────────────────────────────────
 //
-//  Enter searches with Brave; Research starts Ask Brave's Deep Research.
-//  In this tab, as a new tab's search does; with Ctrl or Cmd, in another.
+//  One box for both: Enter (or Search) searches with Brave, in this tab
+//  as a new tab's search does, or with Ctrl or Cmd in another; Assistant
+//  hands the words to the assistant card.
 
 function go(url, elsewhere) {
   if (elsewhere) chrome.tabs.create({ url })
@@ -323,16 +324,12 @@ $('searchform').addEventListener('submit', (e) => {
   const q = $('sq').value.trim()
   if (q) go(searchUrl(q), mod)
 })
-$('research').addEventListener('click', (e) => {
-  const q = $('sq').value.trim()
-  if (q) go(researchUrl(q), e.ctrlKey || e.metaKey)
-  else $('sq').focus()
-})
 
 //  ── the assistant ────────────────────────────────────────────────────
 //
-//  Talon's Assistant, run by the worker: this draws its history, the
-//  write waiting for a yes, and a box. The words are text, never HTML.
+//  Talon's Assistant, run by the worker: this draws its history and the
+//  write waiting for a yes; its words come from the bar at the top. The
+//  words are text, never HTML.
 
 function talk() {
   const a = st.assistant || {}
@@ -345,7 +342,7 @@ function talk() {
   $('talk').scrollTop = $('talk').scrollHeight
   $('confirm').hidden = !a.pending
   $('ctext').textContent = a.pending ? a.pending.text : ''
-  $('asksend').disabled = Boolean(a.busy || a.pending)
+  $('toassist').disabled = Boolean(a.busy || a.pending)
   $('anew').hidden = !(a.history && a.history.length) || Boolean(a.busy)
 }
 
@@ -360,13 +357,17 @@ async function mayAsk() {
   return { ok: true }
 }
 
-$('askform').addEventListener('submit', async (e) => {
-  e.preventDefault()
-  const text = $('askq').value.trim()
-  if (!text || (st.assistant && (st.assistant.busy || st.assistant.pending))) return
+//  The bar's words to the assistant. Its card comes back onto the page if
+//  it was taken off, since that is where the answer shows.
+$('toassist').addEventListener('click', async () => {
+  const text = $('sq').value.trim()
+  if (!text) { $('sq').focus(); return }
+  if (st.assistant && (st.assistant.busy || st.assistant.pending)) return
+  if (hidden().has('assistant')) { const h = hidden(); h.delete('assistant'); await setHidden(h) }
   const ok = await mayAsk()
   if (!ok.ok) { st.assistant = { ...(st.assistant || {}), error: explain('Armillary', ok.error, ship()) }; talk(); return }
-  $('askq').value = ''
+  $('sq').value = ''
+  $('assistant').scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   ask({ kind: 'assist', text }).catch(() => { /* the worker is reloading: its state says where it got to */ })
 })
 $('cyes').addEventListener('click', () => ask({ kind: 'assistAnswer', yes: true }).catch(() => {}))
