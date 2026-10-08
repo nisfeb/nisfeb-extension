@@ -7,7 +7,7 @@ import {
   localDate, escapeXml, complete, readKey, chatPoke, chatStory, isWhom,
 } from './lib/ship.js'
 import {
-  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, balanceOf,
+  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
 } from './lib/today.js'
 import { lookOf, wantsProfile, profileHex } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
@@ -180,7 +180,11 @@ async function refreshDay(origin, snap) {
   const s = new Ship(origin)
   const jobs = {
     cal: () => dayCalendar(s, old.cal && old.cal.data),
-    actions: async () => actionsOf(await s.actions('open')),
+    //  the spend is a line on the card: its failure never fails the card
+    actions: async () => {
+      const [list, last] = await Promise.all([s.actions('open'), s.generatorLast().catch(() => null)])
+      return { list: actionsOf(list), spend: spendOf(last, Date.now()) }
+    },
     mail: async () => mailOf(await s.inbox(20)),
     money: async () => balanceOf(await s.account()),
   }

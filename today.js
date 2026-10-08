@@ -49,11 +49,17 @@ const draw = {
   },
 
   //  No anchor for one action in orrery's page: each goes to its inbox.
-  actions: (list) => {
-    if (!list.length) return [p('Nothing waiting.')]
+  //  A snapshot from before the spend line is the list alone.
+  actions: (d) => {
+    const list = Array.isArray(d) ? d : d.list
+    const spend = Array.isArray(d) ? null : d.spend
     const inbox = `${st.origin}/apps/orrery/#inbox`
-    return [el('ul', {}, list.slice(0, SHOWN).map((a) => el('li', {},
-      el('a', { href: inbox, textContent: a.title || a.kind }), ' ', el('span', { className: 'muted', textContent: a.status })))), more(list)]
+    return [
+      list.length ? el('ul', {}, list.slice(0, SHOWN).map((a) => el('li', {},
+        el('a', { href: inbox, textContent: a.title || a.kind }), ' ', el('span', { className: 'muted', textContent: a.status })))) : p('Nothing waiting.'),
+      more(list),
+      spend !== null && spend !== undefined && p(`${money(spend)} on its model this month`, 'muted'),
+    ]
   },
 
   mail: (d) => [

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  REFRESH_MS, due, mergeCards, statusOf, calRows, okZone, ymd, agenda, calWindow,
+  REFRESH_MS, due, mergeCards, statusOf, spendOf, calRows, okZone, ymd, agenda, calWindow,
   mailOf, actionsOf, balanceOf, money,
 } from '../lib/today.js'
 import { Ship, explain, chatChoices, sendToChat } from '../lib/ship.js'
@@ -247,4 +247,15 @@ test('a send: picked or typed, then sent, refused, or not heard', async () => {
   assert.match((await sendToChat(ask({}), chats, 'heap/~bus/pics', 'hi')).text, /^not a chat: heap\/~bus\/pics/)
   assert.deepEqual(await sendToChat(ask({}), chats, '~bus', '  '), { ok: false, text: 'nothing to send' })
   assert.equal(sent.length, 0)
+})
+
+//  ── Orrery's spend, from its generator-last.json (+gen-record-doc) ───
+
+test('spendOf: this month\'s spend, nothing yet in a new month, null with no record', () => {
+  const now = Date.UTC(2026, 9, 8, 12)
+  assert.equal(spendOf({ month: '2026-10', spend_month_micro: 420000 }, now), 420000)
+  assert.equal(spendOf({ month: '2026-09', spend_month_micro: 9000000 }, now), 0)
+  assert.equal(spendOf({ month: '2026-10' }, now), null)
+  assert.equal(spendOf({}, now), null)
+  assert.equal(spendOf(null, now), null)
 })

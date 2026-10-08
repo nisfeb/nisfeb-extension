@@ -45,6 +45,7 @@ let slow = 0
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
   '/apps/orrery/api/actions?status=open': [{ id: 'a1', kind: 'call', title: 'Call Dana about the lease', status: 'proposed', by: 'orrery', about: [], history: [] }],
+  '/apps/orrery/api/generator/last': { at: '2026-10-08T00:00:00Z', month: new Date(now).toISOString().slice(0, 7), spend_month_micro: 420000, calls_today: 3 },
   '/apps/auspex/api/inbox?view=inbox&limit=20': { total: 3, offset: 0, limit: 20, view: 'inbox', unread: 2, labels: [], threads: [
     { id: '0v1', subject: 'Dinner on Friday', from: '~sampel-palnet', last: now, unread: true },
     { id: '0v2', subject: 'Read already', from: '~bus', last: now - 1, unread: false },
@@ -248,7 +249,7 @@ try {
 
   //  4. a refresh against the stand-in: every source once, then the cards
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
-  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
+  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', '$0.42 on its model this month', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
   t = await page(live, 30000)
   check('refresh: every card drawn from the ship', has(t.text, live).length === 0, `missing: ${has(t.text, live).join(' | ')}\n${t.text}`)
   check('refresh: the mail page shows only unread subjects', !t.text.includes('Read already'), t.text)
@@ -256,6 +257,7 @@ try {
     'GET /apps/calendar/config.json',
     `GET /apps/calendar/window.json?from=${'*'}`,
     'GET /apps/orrery/api/actions?status=open',
+    'GET /apps/orrery/api/generator/last',
     'GET /~/scry/settings/bucket/talon/ui-prefs.json',
     'GET /apps/auspex/api/inbox?view=inbox&limit=20',
     'GET /apps/armillary/api/account',
