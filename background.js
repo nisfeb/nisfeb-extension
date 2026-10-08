@@ -4,7 +4,7 @@
 
 import {
   Ship, ApiError, UnreachableError, slug, stamp, quoted, clipMarkdown,
-  localDate, escapeXml, complete, completion, readKey, chatPoke, chatStory, isWhom, calendarPoke, capBytes,
+  localDate, escapeXml, complete, completion, readKey, chatPoke, chatStory, isWhom, capBytes,
 } from './lib/ship.js'
 import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
@@ -13,9 +13,11 @@ import { lookOf, profileHex, nicknameOf, fontOf, CACHE, fontKey } from './lib/th
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
 import { digestOf, windowFrom, EVERY_MIN } from './lib/history.js'
 import {
-  MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, eventOf, eventLines, windowOf, addDays,
+  MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, createOf, createDraft, updateDraft, eventLines, windowOf, addDays,
   foundLines, bodyLines, instructedText, instructRefusal, clip, messagesFor,
 } from './lib/agent.js'
+import { eventBody, draftFromEvent, onlyBody, doneBody, deleteBody, skipBody, tasksOf, taskMatches, repeats } from './lib/calendar.js'
+import { ymd } from './lib/today.js'
 
 //  Chrome groups several items of one extension under its name, so these
 //  read as Nisfeb > Send to Auspex and so on.
@@ -391,8 +393,49 @@ async function runTool(s, name, a, zone) {
       return eventLines((await s.calendarWindow(w.from, w.to)).rows, zone, from, to)
     }
     if (name === 'create_event' || name === 'create_task') {
-      await s.addEvent(calendarPoke(eventOf(name, a)))
-      return name === 'create_task' ? `Added task "${a.name}"${a.due ? ` due ${a.due}` : ''}.` : `Added "${a.name}" on ${a.date}${a.time ? ` at ${a.time}` : ''}.`
+      const d = createOf(name, a)
+      if (!d) return 'Error: the arguments are not usable; see the tool\'s description.'
+      await s.addEvent(eventBody(d))
+      return name === 'create_task' ? `Added task "${d.name}"${d.due ? ` due ${d.due}` : ''}.` : `Added "${d.name}" on ${a.date}${a.time ? ` at ${a.time}` : ''}.`
+    }
+    if (name === 'update_event' || name === 'delete_event') {
+      const ev = await calendarEvent(s, a.event, zone)
+      if (typeof ev === 'string') return ev
+      const one = a.occurrence && repeats(ev.draft)
+      const occ = one ? await occurrence(s, a.event, a.occurrence, zone, ev.draft) : null
+      if (typeof occ === 'string') return occ
+      if (name === 'delete_event') {
+        await s.addEvent(one ? skipBody(a.event, occ.idx) : deleteBody(a.event))
+        return one ? `Skipped "${ev.draft.name}" on ${a.occurrence}.` : `Deleted "${ev.draft.name}"${repeats(ev.draft) ? ' and every occurrence' : ''}.`
+      }
+      const u = updateDraft(ev.draft, a)
+      if (!u.draft) return u.error
+      if (!one) {
+        await s.addEvent(eventBody(u.draft, a.event))
+        return `Updated "${u.draft.name}".`
+      }
+      //  the calendar page's two steps, in the safe order: the one-off first,
+      //  then skip the original, so a failure leaves a duplicate to see
+      //  rather than a lost occurrence
+      await s.addEvent(onlyBody(u.draft, a.date || occ.date, u.minute ?? occ.minute))
+      try {
+        await s.addEvent(skipBody(a.event, occ.idx))
+      } catch (e) {
+        return `Half done: the changed "${u.draft.name}" was added, but the original on ${a.occurrence} is still there too; the calendar refused the skip (${said(e)}).`
+      }
+      return `Updated "${u.draft.name}" for that occurrence.`
+    }
+    if (name === 'list_tasks' || name === 'complete_task') {
+      const tasks = tasksOf(await s.json('/apps/calendar/events.json?cat=todo'))
+      if (name === 'list_tasks') {
+        const shown = tasks.filter((t) => a.include_done === true || !t.done)
+        return shown.length ? shown.map((t) => `task=${t.id} ${t.due ? `due ${t.due} ` : ''}${t.name}${t.done ? ' (done)' : ''}`).join('\n') : a.include_done === true ? 'No tasks.' : 'No open tasks.'
+      }
+      const hits = taskMatches(tasks, String(a.task || ''), a.reopen === true)
+      if (!hits.length) return `No ${a.reopen === true ? 'done' : 'open'} task matches "${a.task}".`
+      if (hits.length > 1) return 'Several match; which one?\n' + hits.map((t) => `task=${t.id} ${t.name}`).join('\n')
+      await s.addEvent(doneBody(hits[0].id, a.reopen !== true))
+      return `${a.reopen === true ? 'Reopened' : 'Done'}: ${hits[0].name}.`
     }
     if (name === 'orrery_brief') {
       const b = await s.json('/apps/orrery/api/brief/last').catch((e) => { if (e instanceof ApiError && e.status === 404) return null; throw e })
@@ -420,6 +463,51 @@ async function runTool(s, name, a, zone) {
   }
 }
 
+//  One event as the calendar holds it (event.json), as a draft, or the
+//  words the model is told.
+async function calendarEvent(s, id, zone) {
+  if (!String(id || '').trim()) return 'Error: event is required.'
+  try {
+    const e = await s.json(`/apps/calendar/event.json?id=${encodeURIComponent(id)}`)
+    const draft = draftFromEvent(e, ymd(Date.now(), zone))
+    return draft ? { draft } : 'Error: that event could not be read.'
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return `Error: no event ${id}; see list_events.`
+    throw e
+  }
+}
+
+//  A repeating event's occurrence on a day: its index for skip-event, and
+//  its own day and minute (an all-day one in UTC date-space, a timed one
+//  in the event's zone, else the calendar's).
+async function occurrence(s, id, day, zone, draft) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return 'Error: occurrence must be YYYY-MM-DD.'
+  const w = windowOf(day, day)
+  const rows = ((await s.calendarWindow(w.from, w.to)).rows || []).filter((r) => r && r.id === id && Number.isFinite(r.l))
+  const z = draft.zone || zone
+  const row = rows.find((r) => (r.all ? ymd(r.l, 'UTC') : ymd(r.l, z)) === day)
+  if (!row) return `Error: "${draft.name}" has no occurrence on ${day}.`
+  const hm = new Intl.DateTimeFormat('en-GB', { timeZone: row.all ? 'UTC' : z, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(row.l).split(':').map(Number)
+  return { idx: row.idx, date: day, minute: hm[0] * 60 + hm[1] }
+}
+
+//  What the owner is shown for a write needs the event or task named: read
+//  it first. A string is the model's answer instead (no such event, several
+//  tasks match), and nothing is shown.
+async function writeContext(s, name, a, zone) {
+  if (name === 'update_event' || name === 'delete_event') {
+    const ev = await calendarEvent(s, a.event, zone)
+    return typeof ev === 'string' ? ev : { event: ev.draft }
+  }
+  if (name === 'complete_task') {
+    const hits = taskMatches(tasksOf(await s.json('/apps/calendar/events.json?cat=todo')), String(a.task || ''), a.reopen === true)
+    if (!hits.length) return `No ${a.reopen === true ? 'done' : 'open'} task matches "${a.task}".`
+    if (hits.length > 1) return 'Several match; which one?\n' + hits.map((t) => `task=${t.id} ${t.name}`).join('\n')
+    return { task: hits[0] }
+  }
+  return {}
+}
+
 //  Run the turn on from where it stands: the calls still to make from
 //  the model's last step, then more steps, until it answers in words, a
 //  write needs the owner, or the steps run out.
@@ -434,14 +522,21 @@ async function carry(turn, rest, steps) {
       const name = call.function && call.function.name
       const a = argsOf(call)
       let content
-      if (WRITES.has(name)) {
-        const text = proposal(name, a)
+      if (WRITES.has(name) && a) {
+        const ctx = await writeContext(s, name, a, zone).catch((e) => `That failed: ${e.message || e}`)
+        const text = typeof ctx === 'string' ? null : proposal(name, a, ctx)
+        if (typeof ctx === 'string') {
+          turn.push({ role: 'tool', tool_call_id: call.id, content: ctx })
+          continue
+        }
         if (text) {
           const st = await getAssistant()
           await putAssistant({ ...st, busy: false, pending: { call, text, turn, rest, steps } })
           return
         }
-        content = `Error: the arguments for ${name} are not usable; see its description.`
+        //  why, in Talon's words, where the check says
+        content = (name === 'create_event' && createDraft(a).error) || (name === 'update_event' && ctx.event && updateDraft(ctx.event, a).error) ||
+          `Error: the arguments for ${name} are not usable; see its description.`
       } else {
         content = a ? await runTool(s, name, a, zone) : 'Error: the arguments were not JSON.'
       }
