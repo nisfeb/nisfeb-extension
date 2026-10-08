@@ -2,7 +2,8 @@
 //  call goes through the worker (chrome.runtime.sendMessage), which is the
 //  one place status is decided.
 
-import { parseShips, quoted, calendarPoke, localDate, patternFor, chatText, isWhom } from './lib/ship.js'
+import { parseShips, quoted, calendarPoke, localDate, patternFor, chatText, chatChoices, sendToChat, explain as said } from './lib/ship.js'
+import { money } from './lib/today.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
@@ -11,7 +12,6 @@ const out = (card, text, bad = false) => {
   p.textContent = text
   p.classList.toggle('bad', bad)
 }
-const money = (micro) => `$${(micro / 1e6).toFixed(2)}`
 
 let s = { status: 'none' }
 let ctx = { sel: '', url: '', title: '', tabId: undefined }
@@ -58,19 +58,9 @@ async function load() {
   }
 }
 
-//  The ship's one-word refusals, said for a person. Each card names its app
-//  so "HTTP 404" can read as "not installed" and "forbidden" as "signed out".
+//  The ship's one-word refusals, said for a person, by the card's app.
 const APP = { mail: 'Auspex', chat: 'Tlon', read: 'Orrery', lattice: 'Lattice', event: 'Calendar', ask: 'Armillary' }
-function explain(card, error) {
-  const ship = s.ship || 'this ship'
-  //  An agent's own no: its words, whatever they say.
-  if (/ refused it: /.test(error)) return error
-  if (/^HTTP 404$|not found/i.test(error)) return `${APP[card]} is not installed on ${ship}.`
-  if (/signed out|forbidden/i.test(error)) return `Signed out of ${ship}: connect again in Options.`
-  if (/no ship yet/.test(error)) return 'No ship yet: set one up in Options.'
-  if (/^Failed to fetch|timed out/i.test(error)) return `${ship} did not answer: it may be down or busy.`
-  return error
-}
+const explain = (card, error) => said(APP[card], error, s.ship || 'this ship')
 
 //  Where answers come from, which models, and what is left. Read when the
 //  card opens, not before: it is two requests to the ship. Armillary with
@@ -108,9 +98,7 @@ $('chat').addEventListener('toggle', async () => {
   if (!$('chat').open || chats) return
   chats = new Map()
   const r = await ask({ kind: 'chats' })
-  const byWhom = new Map()
-  for (const c of [...(r.recent || []), ...(r.items || [])]) if (!byWhom.has(c.whom)) byWhom.set(c.whom, c.title)
-  for (const [whom, title] of byWhom) if (!chats.has(title)) chats.set(title, whom)
+  chats = chatChoices(r.recent || [], r.items || [])
   $('chatlist').replaceChildren(...[...chats.keys()].map((t) => Object.assign(document.createElement('option'), { value: t })))
   if (!r.ok) out('chat', explain('chat', r.error), true)
 })
@@ -137,19 +125,7 @@ const run = {
     chrome.tabs.create({ url: `${s.origin}/apps/auspex/` })
     return { ok: true, text: 'Saved as a draft. It is under Drafts in Auspex.' }
   },
-  chat: async () => {
-    const typed = $('cwhom').value.trim()
-    const whom = (chats && chats.get(typed)) || (isWhom(`~${typed}`) ? `~${typed}` : typed)
-    if (!whom) return { ok: false, text: 'which chat?' }
-    if (!isWhom(whom)) return { ok: false, text: `not a chat: ${typed}. Pick one from the list, or type a ship.` }
-    const text = $('ctext').value.trim()
-    if (!text) return { ok: false, text: 'nothing to send' }
-    const r = await ask({ kind: 'chat', whom, title: chats && chats.has(typed) ? typed : whom, text })
-    if (!r.ok) return { ok: false, text: r.error }
-    return r.heard
-      ? { ok: true, text: `Sent to ${typed}` }
-      : { ok: false, text: `${s.ship || 'The ship'} took it but did not confirm it within 15 s. It may still land: look in the chat before sending again.` }
-  },
+  chat: () => sendToChat(ask, chats || new Map(), $('cwhom').value, $('ctext').value, s.ship),
   //  A page goes once. Asked to send it again, the button says so and the
   //  next click does.
   read: async () => {
@@ -230,6 +206,7 @@ document.body.addEventListener('click', async (e) => {
 })
 
 $('opts').addEventListener('click', () => chrome.runtime.openOptionsPage())
+$('today').addEventListener('click', () => chrome.tabs.create({ url: 'today.html' }))
 $('model').addEventListener('change', () => ask({ kind: 'model', model: $('model').value }))
 
 load()

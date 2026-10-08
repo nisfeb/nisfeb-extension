@@ -130,7 +130,7 @@ test('a channel post is channel-action-2 to %channels, with no id', () => {
 
 //  /dm: a list of ships. /clubs: id -> {team, meta}. /v3/groups: flag ->
 //  {meta, channels: nest -> {meta}}, as GroupsScryParser reads it.
-test('the chat list, from the three scries', () => {
+test('the chat list, from the three scries: chats, notebooks and galleries', () => {
   const list = chatList({
     dms: ['~sampel-palnet', 42],
     clubs: { '0v4.aaaaa': { team: ['~zod', '~bus'], meta: { title: '' } }, '0v4.bbbbb': { meta: { title: 'Pals' } } },
@@ -155,6 +155,7 @@ test('the chat list, from the three scries', () => {
     { whom: '0v4.bbbbb', title: 'Pals' },
     { whom: 'chat/~bus/general', title: 'Bus Club / General (chat/~bus/general)' },
     { whom: 'chat/~bus/untitled-1', title: 'Bus Club / untitled-1' },
+    { whom: 'heap/~bus/pics', title: 'Bus Club / Pics' },
     { whom: 'chat/~nec/general', title: 'Bus Club / General (chat/~nec/general)' },
     { whom: 'chat/~fed/x', title: '~fed/bare / x' },
   ])

@@ -88,4 +88,15 @@ $('links').addEventListener('change', async () => {
   say('Urbit links are on, from the next page you load.')
 })
 
+//  The day page's address, for Brave's homepage setting. Extension pages
+//  may open chrome:// pages with tabs.create; a link to one goes nowhere.
+const DAY = chrome.runtime.getURL('today.html')
+$('dayurl').value = DAY
+$('daycopy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText(DAY)
+  say('Copied. Paste it as the home button\'s custom address.')
+})
+$('dayntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/getStarted' }))
+$('dayopen').addEventListener('click', () => chrome.tabs.create({ url: DAY }))
+
 refresh()

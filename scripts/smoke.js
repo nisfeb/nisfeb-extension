@@ -8,7 +8,8 @@
 //  carry no cookie). Then it launches again, puts the session cookie in the
 //  profile, and drives the worker's own handlers over the devtools protocol:
 //  a bookmark, a clip, a page for orrery to read, a calendar task, an auspex
-//  draft, the omnibox suggester and the chat list (read, never sent to). Each is then checked against the app's
+//  draft, the omnibox suggester, the chat list (read, never sent to) and the
+//  day page's five reads. Each is then checked against the app's
 //  own HTTP API from here, and the residue is removed.
 //
 //    SHIP=http://localhost:8081 COOKIE_FILE=/path/to/cookie node scripts/smoke.js
@@ -37,7 +38,7 @@ const cookie = { name: COOKIE.slice(0, eq), value: COOKIE.slice(eq + 1).split(';
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const stage = mkdtempSync(join(tmpdir(), 'nisfeb-ext-'))
 const profile = mkdtempSync(join(tmpdir(), 'nisfeb-profile-'))
-for (const f of ['manifest.json', 'background.js', 'content.js', 'popup.html', 'popup.js', 'options.html', 'options.js', 'lib', 'icons']) {
+for (const f of ['manifest.json', 'background.js', 'content.js', 'popup.html', 'popup.js', 'options.html', 'options.js', 'today.html', 'today.js', 'lib', 'icons']) {
   cpSync(join(root, f), join(stage, f), { recursive: true })
 }
 function launch() {
@@ -193,6 +194,14 @@ got.suggest = await step('suggest', () => handle({ kind: 'suggest', q: 'nisfeb-s
 await step('chats', async () => {
   const r = await handle({ kind: 'chats' })
   return r.ok && Array.isArray(r.items) ? true : r
+})
+//  The day page's refresh: five reads, each card with data or its reason.
+await step('today', async () => {
+  const r = await handle({ kind: 'today' })
+  const t = await inWorker("chrome.storage.local.get('today').then((s) => s.today)")
+  const cards = (t && t.cards) || {}
+  const said = Object.fromEntries(Object.entries(cards).map(([k, c]) => [k, c.error || 'ok']))
+  return r.ok && Object.keys(cards).length === 5 && Object.values(said).every((v) => v === 'ok') ? true : { ok: false, error: JSON.stringify(said) }
 })
 
 await step('bookmark is listed', async () => JSON.parse((await api('/apps/lattice/bookmarks')).body).items.some((i) => i.url === url))

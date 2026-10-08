@@ -6,6 +6,9 @@ import {
   Ship, ApiError, UnreachableError, slug, stamp, quoted, clipMarkdown,
   localDate, escapeXml, complete, readKey, chatPoke, chatStory, isWhom,
 } from './lib/ship.js'
+import {
+  due, mergeCards, statusOf, unreads, calRows, calWindow, mailOf, actionsOf, balanceOf,
+} from './lib/today.js'
 
 //  Chrome groups several items of one extension under its name, so these
 //  read as Nisfeb > Send to Auspex and so on.
@@ -120,12 +123,80 @@ async function read(s, { title, url, text, tabId, force }) {
 
 //  The chat list, kept ten minutes per browser session: the groups scry
 //  carries every member of every group, and the card opens once per send.
-async function chatList(s) {
+//  The day page takes one up to an hour old for its names.
+async function chatList(s, maxAge = 600000) {
   const { chatList: c } = await chrome.storage.session.get('chatList')
-  if (c && c.origin === s.origin && Date.now() - c.at < 600000) return c.items
+  if (c && c.origin === s.origin && Date.now() - c.at < maxAge) return c.items
   const items = await s.chats()
   await chrome.storage.session.set({ chatList: { origin: s.origin, at: Date.now(), items } })
   return items
+}
+
+//  ── the day page ─────────────────────────────────────────────────────
+//
+//  Five cards from five sources, each read once per refresh, and at most
+//  one refresh per REFRESH_MS however many tabs ask: the attempt's time
+//  is stored before the reads start, and a refresh in flight is shared.
+//  Every card keeps what it last showed when a read fails.
+
+const HOUR = 3600000
+let dayRun = null
+
+//  Unread conversations by name. The names are the chat list's, up to an
+//  hour old; one it does not name sends for a list ten minutes old.
+async function dayChats(s) {
+  const act = await s.activity()
+  let names = await chatList(s, HOUR).catch(() => [])
+  if (unreads(act).some((u) => !names.some((c) => c.whom === u.whom))) names = await chatList(s).catch(() => names)
+  return unreads(act, names)
+}
+
+//  Today and tomorrow in the calendar's zone; the zone is read once a day.
+async function dayCalendar(s, prev) {
+  const now = Date.now()
+  const known = prev && now - (prev.zoneAt || 0) < 24 * HOUR && now >= prev.zoneAt
+  const zone = known ? prev.zone : String((await s.calendarConfig()).zone || '')
+  const { from, to } = calWindow(now)
+  return { zone, zoneAt: known ? prev.zoneAt : now, rows: calRows((await s.calendarWindow(from, to)).rows) }
+}
+
+//  A failure as the status needs it: signed out, no answer, or neither.
+const outOf = (e) => (e instanceof ApiError && e.signedOut ? 'signed-out'
+  : e instanceof UnreachableError || (e instanceof ApiError && [502, 503, 504].includes(e.status)) ? 'unreachable' : '')
+
+async function refreshDay(origin, snap) {
+  const tried = Date.now()
+  const old = snap && snap.origin === origin ? snap.cards : {}
+  await chrome.storage.local.set({ today: { origin, tried, cards: old } })
+  const s = new Ship(origin)
+  const jobs = {
+    cal: () => dayCalendar(s, old.cal && old.cal.data),
+    chats: () => dayChats(s),
+    actions: async () => actionsOf(await s.actions('open')),
+    mail: async () => mailOf(await s.inbox(20)),
+    money: async () => balanceOf(await s.account()),
+  }
+  const keys = Object.keys(jobs)
+  const got = await Promise.all(keys.map((k) => jobs[k]().then(
+    (data) => ({ data }),
+    (e) => ({ error: e.message || String(e), out: outOf(e) }),
+  )))
+  const status = statusOf(got)
+  const lastError = (got.find((r) => r.out) || {}).error || ''
+  await chrome.storage.local.set({
+    today: { origin, tried, cards: mergeCards(old, Object.fromEntries(keys.map((k, i) => [k, got[i]])), Date.now()) },
+    ...(status ? { status, lastError: status === 'connected' ? '' : lastError } : {}),
+  })
+}
+
+//  The page reads the snapshot itself and asks this for a refresh. The
+//  answer waits for the read, which keeps the worker awake through it.
+async function today() {
+  const { origin, today: snap } = await chrome.storage.local.get(['origin', 'today'])
+  if (!origin) return { ok: false, error: 'no ship yet: set one up in Options' }
+  if (!dayRun && due(snap, origin, Date.now())) dayRun = refreshDay(origin, snap).finally(() => { dayRun = null })
+  if (dayRun) await dayRun
+  return { ok: true }
 }
 
 //  An earlier build filed each page as a note action, which the ship only
@@ -216,6 +287,8 @@ const actions = {
     await chrome.storage.local.set({ lastChats: last })
     return { heard }
   }),
+
+  today: () => today(),
 
   //  The one request a content script may make: where the ship is.
   linkOrigin: async () => ({ origin: (await state()).origin || '' }),
