@@ -7,7 +7,7 @@ import {
   localDate, escapeXml, complete, completion, readKey, chatPoke, chatStory, isWhom, calendarPoke, capBytes,
 } from './lib/ship.js'
 import {
-  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf, prioritiesOf, prioritiesFresh,
+  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
 } from './lib/today.js'
 import { lookOf, profileHex, nicknameOf, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
@@ -221,8 +221,6 @@ function readLook(origin) {
 const outOf = (e) => (e instanceof ApiError && e.signedOut ? 'signed-out'
   : e instanceof UnreachableError || (e instanceof ApiError && [502, 503, 504].includes(e.status)) ? 'unreachable' : '')
 
-const KEEP = Symbol('keep')
-
 async function refreshDay(origin, snap) {
   const tried = Date.now()
   const old = snap && snap.origin === origin ? snap.cards : {}
@@ -236,23 +234,12 @@ async function refreshDay(origin, snap) {
       return { list: actionsOf(list), spend: spendOf(last, Date.now()) }
     },
     mail: async () => mailOf(await s.inbox(20)),
-    //  read every half hour, not every refresh; an orrery without the
-    //  route yet is a card that says so, not a missing app
-    priorities: async () => {
-      if (prioritiesFresh(old.priorities, Date.now())) return KEEP
-      try {
-        return prioritiesOf(await s.json('/apps/orrery/api/priorities'))
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 404) return { at: '', items: [], missing: true }
-        throw e
-      }
-    },
     money: async () => balanceOf(await s.account()),
   }
   const keys = Object.keys(jobs)
   const looked = readLook(origin)
   const got = await Promise.all(keys.map((k) => jobs[k]().then(
-    (data) => (data === KEEP ? { keep: true } : { data }),
+    (data) => ({ data }),
     (e) => ({ error: e.message || String(e), out: outOf(e) }),
   )))
   await looked

@@ -14,7 +14,7 @@ import { drawDial } from './sky-dial.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
-const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary', priorities: 'Orrery' }
+const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
 const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'dayMode', 'backgroundAt', 'place', 'weather', 'dayOrder', 'dayHidden', 'assistant']
 const SHOWN = 12
 
@@ -76,19 +76,6 @@ const draw = {
       title: t.from, line: t.subject || '(no subject)', side: t.last ? clock(t.last) : '', strong: true,
     }))),
   ],
-
-  //  Each priority's Search and Research put its words in the search box
-  //  and run them, as the box's own buttons do.
-  priorities: (d) => {
-    if (d.missing) return [p('Orrery on your ship does not rank priorities yet; a newer Orrery will.', 'muted')]
-    if (!d.items.length) return [p('Nothing ranked yet. Orrery ranks what you are on from your browsing, its actions and your calendar.', 'muted')]
-    return [el('ul', {}, d.items.map((i) => el('li', {},
-      el('div', { className: 'row' }, el('span', { className: 'title strong', textContent: i.title })),
-      i.why && el('div', { className: 'line', textContent: i.why }),
-      el('div', { className: 'acts' },
-        el('button', { textContent: 'Search', onclick: (e) => { fill(i.query); go(searchUrl(i.query), e.ctrlKey || e.metaKey) } }),
-        el('button', { textContent: 'Research', onclick: (e) => { fill(i.query); go(researchUrl(i.query), e.ctrlKey || e.metaKey) } })))))]
-  },
 
   money: (d) => (d.vendor
     ? [p(money(d.balance), 'big'), p(`with ${d.vendor}`, 'muted')]
@@ -201,7 +188,7 @@ const OWN_PRESS = 'a, button, input, textarea, select, .talk'
 
 //  Cards taken off the page, as on Talon's: kept per browser, and put
 //  back from the header while arranging.
-const NAMES = { clock: 'Clock', cal: 'Today', actions: 'Orrery', mail: 'Mail', money: 'Armillary', assistant: 'Assistant', priorities: 'Priorities' }
+const NAMES = { clock: 'Clock', cal: 'Today', actions: 'Orrery', mail: 'Mail', money: 'Armillary', assistant: 'Assistant' }
 const hidden = () => new Set(Array.isArray(st.dayHidden) ? st.dayHidden : [])
 const setHidden = (h) => chrome.storage.local.set({ dayHidden: [...h] })
 

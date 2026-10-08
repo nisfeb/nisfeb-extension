@@ -24,8 +24,6 @@
 //    no settings     the page carries none: they are in Options
 //    the search box  Search and Research go to Brave Search's own
 //                    addresses (caught before they leave the machine)
-//    priorities      orrery's current priorities drawn, and a priority's
-//                    Search runs its words
 //    history         pages really visited go to orrery's read channel as
 //                    a digest of sites and titles, a listed site and the
 //                    ship's own pages left out, once the owner turns it on
@@ -79,10 +77,6 @@ const reads = []
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
   '/apps/orrery/api/actions?status=open': [{ id: 'a1', kind: 'call', title: 'Call Dana about the lease', status: 'proposed', by: 'orrery', about: [], history: [] }],
-  '/apps/orrery/api/priorities': { at: new Date(now).toISOString(), items: [
-    { title: 'Lisbon trip, Oct 19-24', why: 'Flights and hotels in your browsing; the trip is on your calendar.', query: 'Lisbon hotels near the venue' },
-    { title: 'The lease with Dana', why: 'An open action, due Friday.', query: 'apartment lease renewal questions' },
-  ] },
   '/apps/orrery/api/generator/last': { at: '2026-10-08T00:00:00Z', month: new Date(now).toISOString().slice(0, 7), spend_month_micro: 420000, calls_today: 3 },
   '/apps/auspex/api/inbox?view=inbox&limit=20': { total: 3, offset: 0, limit: 20, view: 'inbox', unread: 2, labels: [], threads: [
     { id: '0v1', subject: 'Dinner on Friday', from: '~sampel-palnet', last: now, unread: true },
@@ -335,7 +329,7 @@ try {
   //  4. a refresh against the stand-in: every source once, then the cards
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
   asked.length = 0
-  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', '$0.42 on its model this month', 'Lisbon trip, Oct 19-24', 'An open action, due Friday.', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
+  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', '$0.42 on its model this month', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
   t = await page(live, 30000)
   check('refresh: every card drawn from the ship', has(t.text, live).length === 0, `missing: ${has(t.text, live).join(' | ')}\n${t.text}`)
   check('refresh: the mail page shows only unread subjects', !t.text.includes('Read already'), t.text)
@@ -344,7 +338,6 @@ try {
     `GET /apps/calendar/window.json?from=${'*'}`,
     'GET /apps/orrery/api/actions?status=open',
     'GET /apps/orrery/api/generator/last',
-    'GET /apps/orrery/api/priorities',
     'GET /~/scry/settings/bucket/talon/ui-prefs.json',
     'GET /~/scry/contacts/v1/self.json',
     'GET /apps/auspex/api/inbox?view=inbox&limit=20',
@@ -545,14 +538,6 @@ try {
   for (let i = 0; i < 25 && caught.length < 2; i++) await new Promise((r) => setTimeout(r, 200))
   check('search: Research starts Ask Brave\'s Deep Research', caught[1] === 'https://search.brave.com/ask?q=history%20of%20urbit&enable_research=true', caught.join(' '))
   await close(s2)
-
-  //  priorities: a priority's Search runs its words
-  const s3 = await page(['Lisbon trip, Oct 19-24'])
-  await cdp('Fetch.enable', { patterns: [{ urlPattern: 'https://search.brave.com/*' }] }, s3.sessionId)
-  await evaluate("document.querySelector('#priorities li .acts button').click()", s3.sessionId)
-  for (let i = 0; i < 25 && caught.length < 3; i++) await new Promise((r) => setTimeout(r, 200))
-  check('priorities: a priority\'s Search runs its words', caught[2] === 'https://search.brave.com/search?q=Lisbon%20hotels%20near%20the%20venue', caught.join(' '))
-  await close(s3)
 
   //  history into orrery: real visits, a digest, a listed site left out
   for (const u of [`${SITE}/a`, `${SITE}/b`, `${SECRET}/c`]) {
