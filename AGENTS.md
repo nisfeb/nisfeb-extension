@@ -20,7 +20,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/leo.js` | Brave Leo's Bring your own model values from the ship's Armillary lease, or why not (Talon's `BraveLeo.kt`). The key never passes through it, only its last four. |
 | `lib/agent.js` | The day page's assistant: Talon's prompt rules, its tools (names, words, arguments from `AssistantActions.kt` and `OrreryTools.kt`), the writes that wait for a yes, and how each answer is told to the model. The loop is in `background.js`. |
 | `sky-dial.js` | Draws the sky clock on a canvas, with its readout as text. |
-| `theme-boot.js` | Paints the last look before the page's module loads. A plain script, since an extension page may run no inline one. |
+| `boot.js` | Runs first on the day page: paints the last look, and on a fresh tab loads the page once more so the keyboard comes to its bar, not the address bar. A plain script, since an extension page may run no inline one. |
 | `popup.*`, `options.*`, `today.*` | Extension pages. |
 | `content.js` | The optional clickable-links script, registered from Options, never from the manifest. |
 | `test/*.test.js` | `node --test` unit tests of the pure parts. |
