@@ -5,19 +5,17 @@
 //  while it stays in view. Everything shown is built as nodes with text,
 //  never HTML: it is the ship's words, and other people's.
 
-import { explain, isWhom, chatChoices, sendToChat } from './lib/ship.js'
+import { explain } from './lib/ship.js'
 import { agenda, money, due } from './lib/today.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
-const APP = { cal: 'Calendar', chats: 'Tlon', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
-const KEYS = ['origin', 'ship', 'status', 'today', 'lastChats']
+const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
+const KEYS = ['origin', 'ship', 'status', 'today']
 const SHOWN = 12
 
 let st = {}
 let reading = false
-let unread = []
-let listed = null
 
 function el(tag, props = {}, ...kids) {
   const n = Object.assign(document.createElement(tag), props)
@@ -45,20 +43,6 @@ const draw = {
       a.tomorrow.length && [el('h3', { textContent: 'Tomorrow' }), list(a.tomorrow)],
       a.zone && a.zone !== here && p(`Times in ${a.zone}, the calendar's zone.`, 'muted'),
     ]
-  },
-
-  //  Mentions first, then the most recent. A chat a message can go to is
-  //  a button that puts it in the reply box.
-  chats: (list) => {
-    unread = list
-    if (!list.length) return [p('Nothing unread.')]
-    return [el('ul', {}, list.slice(0, SHOWN).map((u) => el('li', {},
-      isWhom(u.whom) ? el('button', { className: 'link', textContent: u.title, onclick: () => pick(u) }) : u.title,
-      el('span', {
-        className: u.mentions ? 'count mention' : 'count',
-        textContent: u.mentions ? `@${u.mentions} · ${u.count}` : String(u.count),
-        title: `${u.count} unread${u.mentions ? `, ${u.mentions} mentioning you` : ''}`,
-      })))), more(list)]
   },
 
   //  No anchor for one action in orrery's page: each goes to its inbox.
@@ -122,41 +106,6 @@ async function refresh() {
   reading = false
   render()
 }
-
-//  ── the reply box: Send to a chat's picker and send ──────────────────
-
-const say = (text, bad = false) => { $('rout').textContent = text; $('rout').className = bad ? 'out bad' : 'out muted' }
-
-function pick(u) {
-  $('rwhom').value = u.title
-  $('rtext').focus()
-}
-
-//  The picker's names, read when the box is first used: the unread chats,
-//  then the ones picked here last, then every chat the ship has.
-$('rwhom').addEventListener('focus', async () => {
-  if (listed) return
-  listed = []
-  const r = await ask({ kind: 'chats' })
-  listed = r.items || []
-  $('rlist').replaceChildren(...[...chatChoices(unread, r.recent || [], listed).keys()].map((t) => el('option', { value: t })))
-  if (!r.ok) say(explain('Tlon', r.error, ship()), true)
-})
-
-$('reply').addEventListener('submit', async (e) => {
-  e.preventDefault()
-  $('rsend').disabled = true
-  say('…')
-  try {
-    const chats = chatChoices(unread, st.lastChats || [], listed || [])
-    const r = await sendToChat(ask, chats, $('rwhom').value, $('rtext').value, st.ship)
-    say(r.ok ? r.text : explain('Tlon', r.text, ship()), !r.ok)
-    if (r.ok) $('rtext').value = ''
-  } catch (err) {
-    say(err.message || String(err), true)
-  }
-  $('rsend').disabled = false
-})
 
 //  ── wiring ───────────────────────────────────────────────────────────
 

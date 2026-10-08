@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  REFRESH_MS, due, mergeCards, statusOf, unreads, calRows, okZone, ymd, agenda, calWindow,
+  REFRESH_MS, due, mergeCards, statusOf, calRows, okZone, ymd, agenda, calWindow,
   mailOf, actionsOf, balanceOf, money,
 } from '../lib/today.js'
 import { Ship, explain, chatChoices, sendToChat } from '../lib/ship.js'
@@ -42,40 +42,6 @@ test('the status is decided once for the five answers', () => {
   assert.equal(statusOf([gone, gone]), 'unreachable')
   assert.equal(statusOf([gone, missing]), null)
   assert.equal(statusOf([]), null)
-})
-
-//  ── chats, as ActivityParser.kt reads %activity ─────────────────────
-
-test('unreads: the main stream only, mentions first, names from the chat list', () => {
-  const activity = {
-    'ship/~sampel-palnet': { recency: 50, count: 9, 'notify-count': 9, notify: true, unread: { id: '~sampel-palnet/170.141', count: 2, notify: true } },
-    //  a mention in a thread, none in the stream: not a mention here
-    'club/0v4.aaaaa': { recency: 90, count: 2, 'notify-count': 1, notify: true, unread: { id: '~zod/1', count: 1, notify: false } },
-    //  its count is all thread replies: the main stream is read
-    'channel/chat/~bus/general': { recency: 99, count: 7, 'notify-count': 3, notify: true, unread: null },
-    'channel/heap/~bus/pics': { recency: 70, count: 4, 'notify-count': 1, notify: true, unread: { id: '1', count: 4, notify: true } },
-    //  notify-count rolls threads up: capped at the stream's own count
-    'channel/chat/~bus/random': { recency: 10, count: 6, 'notify-count': 5, notify: true, unread: { id: '2', count: 2, notify: true } },
-    //  not conversations here
-    'thread/chat/~bus/general/170.141': { recency: 100, count: 1, unread: { count: 1, notify: true } },
-    'dm-thread/~zod/~zod/170.141': { recency: 100, count: 1, unread: { count: 1, notify: true } },
-    'notebook/~bus/n': { recency: 100, count: 1, unread: null },
-    'group/~bus/club': { recency: 100, count: 3, unread: { count: 3, notify: true } },
-    base: { recency: 100, count: 3, unread: null },
-  }
-  const names = [
-    { whom: '~sampel-palnet', title: '~sampel-palnet' },
-    { whom: 'chat/~bus/random', title: 'Bus Club / Random' },
-    { whom: 'heap/~bus/pics', title: 'Bus Club / Pics' },
-  ]
-  assert.deepEqual(unreads(activity, names), [
-    { whom: 'heap/~bus/pics', title: 'Bus Club / Pics', count: 4, mentions: 1, recency: 70 },
-    { whom: '~sampel-palnet', title: '~sampel-palnet', count: 2, mentions: 2, recency: 50 },
-    { whom: 'chat/~bus/random', title: 'Bus Club / Random', count: 2, mentions: 2, recency: 10 },
-    { whom: '0v4.aaaaa', title: '0v4.aaaaa', count: 1, mentions: 0, recency: 90 },
-  ])
-  assert.deepEqual(unreads(null), [])
-  assert.deepEqual(unreads({ 'ship/~zod': 'nonsense' }), [])
 })
 
 //  ── the calendar, as window.json and calendar.js have it ────────────

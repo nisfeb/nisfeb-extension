@@ -12,11 +12,8 @@
 //    a refresh       each source read once, at its own route; a second
 //                    tab inside five minutes asks nothing
 //    failures, live  a missing app, a 403, a 502 and a dropped connection,
-//                    one card each, the others drawn; /v6 activity falls
-//                    back to /v4 on a 500
-//    the reply box   the poke Send to a chat sends, then "Sent", and a
-//                    refusal in the agent's words
-//    leaving midway  a refresh, and a send, finish after the tab closes
+//                    one card each, the others drawn
+//    leaving midway  a refresh finishes after the tab closes
 //
 //    node scripts/today-check.js        (BROWSER names the binary;
 //                                        SHOT=file.png keeps a picture)
@@ -36,19 +33,10 @@ const [y, m, d] = localDate(new Date(now)).split('-').map(Number)
 const todayUtc = Date.UTC(y, m - 1, d)
 const asked = []
 let mode = 'ok'
-let ack = { ok: 'ok' }
 let slow = 0
-const pokes = []
 
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
-  '/~/scry/chat/dm.json': ['~sampel-palnet'],
-  '/~/scry/chat/clubs.json': {},
-  '/~/scry/groups/v3/groups.json': { '~bus/club': { meta: { title: 'Bus Club' }, channels: { 'chat/~bus/general': { meta: { title: 'General' } } } } },
-  '/~/scry/activity/v6/activity/full.json': {
-    'channel/chat/~bus/general': { recency: now, count: 3, 'notify-count': 1, notify: true, unread: { id: '~zod/1', count: 3, notify: true } },
-    'ship/~sampel-palnet': { recency: now - 1000, count: 1, 'notify-count': 0, notify: false, unread: { id: '~sampel-palnet/1', count: 1, notify: false } },
-  },
   '/apps/orrery/api/actions?status=open': [{ id: 'a1', kind: 'call', title: 'Call Dana about the lease', status: 'proposed', by: 'orrery', about: [], history: [] }],
   '/apps/auspex/api/inbox?view=inbox&limit=20': { total: 3, offset: 0, limit: 20, view: 'inbox', unread: 2, labels: [], threads: [
     { id: '0v1', subject: 'Dinner on Friday', from: '~sampel-palnet', last: now, unread: true },
@@ -60,17 +48,6 @@ const fixtures = {
 const server = createServer((req, res) => {
   const path = req.url
   asked.push(`${req.method} ${path.replace(/^\/~\/channel\/[^?]+/, '/~/channel/<id>')}`)
-  if (path.startsWith('/~/channel/')) {
-    if (req.method === 'PUT') {
-      let body = ''
-      req.on('data', (c) => { body += c })
-      req.on('end', () => { pokes.push(JSON.parse(body)); res.writeHead(204).end() })
-      return
-    }
-    res.writeHead(200, { 'content-type': 'text/event-stream' })
-    setTimeout(() => res.write(`id: 0\ndata: ${JSON.stringify({ id: 1, response: 'poke', ...ack })}\n\n`), slow)
-    return
-  }
   if (path.startsWith('/apps/calendar/window.json')) {
     if (mode === 'fail') return res.writeHead(404).end('<html>not found</html>')
     return json(res, { caps: [], rows: [
@@ -81,8 +58,6 @@ const server = createServer((req, res) => {
   }
   if (mode === 'fail') {
     if (path === '/apps/calendar/config.json') return res.writeHead(404).end('<html>not found</html>')
-    if (path === '/~/scry/activity/v6/activity/full.json') return res.writeHead(500).end('<html>no</html>')
-    if (path === '/~/scry/activity/v4/activity/full.json') return json(res, fixtures['/~/scry/activity/v6/activity/full.json'])
     if (path.startsWith('/apps/orrery/')) return res.writeHead(403).end('Forbidden')
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
@@ -212,14 +187,13 @@ try {
   //  2. a stored snapshot, fresh: drawn at once, nothing asked
   const cards = {
     cal: { at: now, error: '', data: { zone: '', zoneAt: now, rows: [{ name: 'Cached standup', cat: 'timed', all: false, done: false, l: now - 60000, r: now + 60000 }] } },
-    chats: { at: now, error: '', data: [{ whom: 'chat/~bus/general', title: 'Bus Club / General', count: 3, mentions: 1, recency: now }] },
     actions: { at: now, error: '', data: [{ id: 'a1', title: 'Cached action', status: 'approved', kind: 'call' }] },
     mail: { at: now, error: '', data: { unread: 4, threads: [{ subject: 'Cached subject', from: '~bus', last: now }] } },
     money: { at: now, error: '', data: { vendor: '~wex', balance: 2500000 } },
   }
   await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards } })
-  t = await page(['Cached standup', 'Bus Club / General', 'Cached action', 'Cached subject', '$2.50'])
-  check('cached: every card drawn', has(t.text, ['Cached standup', 'Bus Club / General', '@1 · 3', 'Cached action', '4 unread', 'Cached subject', '$2.50', 'with ~wex']).length === 0, t.text)
+  t = await page(['Cached standup', 'Cached action', 'Cached subject', '$2.50'])
+  check('cached: every card drawn', has(t.text, ['Cached standup', 'Cached action', '4 unread', 'Cached subject', '$2.50', 'with ~wex']).length === 0, t.text)
   check('cached: nothing asked of the ship', asked.length === 0, asked.join('\n'))
   check('cached: no exception in the page', errors.length === 0, errors.join('\n'))
   await close(t)
@@ -227,8 +201,7 @@ try {
   //  3. a snapshot whose cards failed: each says why, the data stays
   const failed = {
     cal: { error: 'HTTP 404' },
-    chats: { ...cards.chats, error: 'signed out' },
-    actions: { error: 'Failed to fetch' },
+    actions: { error: 'signed out' },
     mail: { ...cards.mail, error: 'HTTP 502' },
     money: cards.money,
   }
@@ -237,8 +210,6 @@ try {
   const said = [
     'Calendar is not installed on ~zod.',
     'Signed out of ~zod: connect again in Options.',
-    'Bus Club / General',
-    '~zod did not answer: it may be down or busy.',
     'Cached subject',
     '$2.50',
     '~zod: signed out, connect again in Options',
@@ -248,17 +219,13 @@ try {
 
   //  4. a refresh against the stand-in: every source once, then the cards
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
-  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', 'Bus Club / General', '@1 · 3', '~sampel-palnet', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
+  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
   t = await page(live, 30000)
   check('refresh: every card drawn from the ship', has(t.text, live).length === 0, `missing: ${has(t.text, live).join(' | ')}\n${t.text}`)
   check('refresh: the mail page shows only unread subjects', !t.text.includes('Read already'), t.text)
   const once = [
     'GET /apps/calendar/config.json',
     `GET /apps/calendar/window.json?from=${'*'}`,
-    'GET /~/scry/activity/v6/activity/full.json',
-    'GET /~/scry/chat/dm.json',
-    'GET /~/scry/chat/clubs.json',
-    'GET /~/scry/groups/v3/groups.json',
     'GET /apps/orrery/api/actions?status=open',
     'GET /apps/auspex/api/inbox?view=inbox&limit=20',
     'GET /apps/armillary/api/account',
@@ -283,35 +250,6 @@ try {
     writeFileSync(process.env.SHOT, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
   }
 
-  //  6. the reply box: Talon's channel post, then "Sent"
-  pokes.length = 0
-  await evaluate(`document.querySelector('#chats button.link').click(); document.getElementById('rtext').value = 'on my way'; document.getElementById('reply').requestSubmit()`, t.sessionId)
-  let out = await textOf(t.sessionId, ['Sent to Bus Club / General'])
-  check('reply: sent, and said so', out.includes('Sent to Bus Club / General'), out)
-  const [poke, del] = pokes
-  const p0 = poke && poke[0]
-  check('reply: the channel-action-2 poke Send to a chat sends',
-    p0 && p0.action === 'poke' && p0.ship === 'zod' && p0.app === 'channels' && p0.mark === 'channel-action-2' &&
-    p0.json.channel.nest === 'chat/~bus/general' && p0.json.channel.action.post.add.author === '~zod' &&
-    JSON.stringify(p0.json.channel.action.post.add.content) === JSON.stringify([{ inline: ['on my way'] }]), JSON.stringify(pokes))
-  check('reply: the channel is deleted after', JSON.stringify(del) === JSON.stringify([{ id: 2, action: 'delete' }]), JSON.stringify(pokes))
-  ack = { err: 'bad-nest\n/app/channels/hoon' }
-  await evaluate(`document.getElementById('rtext').value = 'again'; document.getElementById('reply').requestSubmit()`, t.sessionId)
-  out = await textOf(t.sessionId, ['refused it'])
-  check('reply: a refusal in the agent\'s words', out.includes('%channels refused it: bad-nest'), out)
-  ack = { ok: 'ok' }
-
-  //  leaving midway: a send whose answer comes after the tab is gone
-  pokes.length = 0
-  slow = 1500
-  await evaluate(`document.getElementById('rtext').value = 'leaving'; document.getElementById('reply').requestSubmit()`, t.sessionId)
-  await new Promise((r) => setTimeout(r, 300))
-  await close(t)
-  await new Promise((r) => setTimeout(r, 2500))
-  check('leaving midway: the send finishes and its channel is deleted', pokes.length === 2 && pokes[1][0].action === 'delete', JSON.stringify(pokes))
-  const recent = await evaluate("chrome.storage.local.get('lastChats').then((s) => JSON.stringify(s.lastChats))", ws1)
-  check('leaving midway: the chat is kept as picked last', recent.includes('chat/~bus/general'), recent)
-
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
   t = await page(['Reading'], 3000)
@@ -329,16 +267,15 @@ try {
     'Calendar is not installed on ~zod.',
     'Signed out of ~zod: connect again in Options.',
     '~zod did not answer: it may be down or busy.',
-    'Bus Club / General',
   ]
   t = await page(fail, 30000)
   check('failures, live: each card says why, the rest drawn', has(t.text, fail).length === 0, `missing: ${has(t.text, fail).join(' | ')}\n${t.text}`)
   check('failures, live: two cards did not answer (502 and a dropped connection)', t.text.split('~zod did not answer').length - 1 === 2, t.text)
-  check('failures, live: /v6 activity fell back to /v4 on a 500', asked.includes('GET /~/scry/activity/v4/activity/full.json'), asked.join('\n'))
   check('failures, live: no HTML from the ship is shown', !/Bad Gateway|<html>/.test(t.text), t.text)
   await close(t)
 } finally {
-  browser.kill()
+  //  the profile is still being written until the browser has gone
+  await new Promise((r) => { browser.once('exit', r); browser.kill(); setTimeout(r, 5000) })
   server.close()
   rmSync(stage, { recursive: true, force: true })
   rmSync(profile, { recursive: true, force: true })

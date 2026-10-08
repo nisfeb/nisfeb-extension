@@ -27,17 +27,11 @@
     p { margin: .3rem 0; }
     .when, .muted { opacity: .65; font-size: .9em; }
     .when { display: inline-block; min-width: 5.5rem; }
-    .count { float: right; font-size: .85em; opacity: .75; }
-    .count.mention { color: var(--mention); opacity: 1; font-weight: 600; }
     .bad { color: var(--bad); }
     .big { font-size: 1.6rem; margin: .2rem 0; }
     a { color: inherit; }
     button { font: inherit; padding: .3rem .7rem; }
-    button.link { background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; }
-    form { margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--line); display: grid; gap: .4rem; }
     input { font: inherit; padding: .35rem; width: 100%; box-sizing: border-box; }
-    form .row { display: flex; gap: .4rem; } form .row input { flex: 1; min-width: 0; }
-    button.primary { background: var(--amber); color: var(--navy); border: 0; font-weight: 600; }
     footer { margin-top: 2rem; font-size: .85rem; opacity: .7; }
     [hidden] { display: none !important; }
   </style>
@@ -57,19 +51,6 @@
 
   <main id="cards" hidden>
     <section id="cal"><h2><a data-app="/apps/calendar/">Today</a></h2><div class="body"></div></section>
-    <section id="chats">
-      <h2><a data-app="/apps/groups/">Unread chats</a></h2>
-      <div class="body"></div>
-      <form id="reply" autocomplete="off">
-        <input id="rwhom" list="rlist" placeholder="Reply in: a chat's name, or a ship" aria-label="Chat">
-        <datalist id="rlist"></datalist>
-        <div class="row">
-          <input id="rtext" placeholder="Message" aria-label="Message">
-          <button class="primary" id="rsend">Send</button>
-        </div>
-        <p class="out muted" id="rout"></p>
-      </form>
-    </section>
     <section id="actions"><h2><a data-app="/apps/orrery/#inbox">Orrery</a></h2><div class="body"></div></section>
     <section id="mail"><h2><a data-app="/apps/auspex/">Mail</a></h2><div class="body"></div></section>
     <section id="money"><h2><a data-app="/apps/armillary/">Armillary</a></h2><div class="body"></div></section>

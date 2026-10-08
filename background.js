@@ -7,7 +7,7 @@ import {
   localDate, escapeXml, complete, readKey, chatPoke, chatStory, isWhom,
 } from './lib/ship.js'
 import {
-  due, mergeCards, statusOf, unreads, calRows, calWindow, mailOf, actionsOf, balanceOf,
+  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, balanceOf,
 } from './lib/today.js'
 
 //  Chrome groups several items of one extension under its name, so these
@@ -142,15 +142,6 @@ async function chatList(s, maxAge = 600000) {
 const HOUR = 3600000
 let dayRun = null
 
-//  Unread conversations by name. The names are the chat list's, up to an
-//  hour old; one it does not name sends for a list ten minutes old.
-async function dayChats(s) {
-  const act = await s.activity()
-  let names = await chatList(s, HOUR).catch(() => [])
-  if (unreads(act).some((u) => !names.some((c) => c.whom === u.whom))) names = await chatList(s).catch(() => names)
-  return unreads(act, names)
-}
-
 //  Today and tomorrow in the calendar's zone; the zone is read once a day.
 async function dayCalendar(s, prev) {
   const now = Date.now()
@@ -171,7 +162,6 @@ async function refreshDay(origin, snap) {
   const s = new Ship(origin)
   const jobs = {
     cal: () => dayCalendar(s, old.cal && old.cal.data),
-    chats: () => dayChats(s),
     actions: async () => actionsOf(await s.actions('open')),
     mail: async () => mailOf(await s.inbox(20)),
     money: async () => balanceOf(await s.account()),
