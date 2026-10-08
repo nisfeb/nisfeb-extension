@@ -39,11 +39,14 @@ The code is sent once to the ship's own login form and never stored. The browser
 
 Click the nisfeb button, then **Today**. The page shows Talon's sky clock, then today's events, Orrery's open actions and its spend this month, unread mail and your Armillary balance. A card for an app your ship does not have says so, and the others still show. The page wears your Talon theme if you have a custom one.
 
-Under **Customize this page**, at the bottom:
+To arrange the cards, right-click or long-press any of them, as in Talon. Drag a card onto the place it should take, or use its arrows, then press **Done**.
 
-- **Location for the clock.** Type a town or postcode and press **Find**, then pick it from the list. Coordinates such as `51.5, -0.13` are taken as they are. Without a place the clock shows an even day and no weather. With one, it asks Open-Meteo for that place's weather every half hour, with the position rounded to about a kilometre.
+Everything the page shows is set in **Options**, under **The day page**:
+
+- **Use my Talon theme and font.** On by default. The line under it says what was last read from your ship: which Talon theme, its accent and its font. Off, the page uses Talon's own colours in the system's font.
+- **Light or dark.** Talon keeps this per device, so set it as your Talon is. A custom Talon theme brings its own.
+- **Location for the clock.** Type a town or postcode and press **Find**, then pick it from the list. Coordinates such as `51.5, -0.13` are taken as they are. Without a place the clock shows an even day and no weather. With one, it asks Open-Meteo for that place's weather every half hour, with the position rounded to about a kilometre. **Set a location** on the clock opens this field.
 - **Background image.** Choose an image file. It stays in this browser only. **Remove the background** takes it away.
-- **Use my Talon theme.** On by default. Off, the page uses Talon's own colours.
 
 ## 5. Make it your new tab (Brave)
 
@@ -79,5 +82,6 @@ Then press the reload arrow (↻) on the nisfeb card at `brave://extensions`, so
 | One card says its app is not installed | Your ship does not run that app (or an older version) | Install or update the app on the ship, or ignore the card |
 | A card says the ship did not answer | The ship is down, busy or unreachable | Wait and reopen. The card keeps what it last showed |
 | Nothing at all works, and the popup does not respond | The background worker failed to load | `brave://extensions`, the nisfeb card, **Errors**; then the reload arrow |
-| The clock shows no weather | No place is set, or Open-Meteo did not answer | Set a place under **Customize this page**; a failed fetch is tried again after five minutes |
+| The clock shows no weather | No place is set, or Open-Meteo did not answer | Set a place in Options; a failed fetch is tried again after five minutes |
+| The page does not look like your Talon | Talon's light or dark is per device, or the look has not been read | In Options, check the line under **Use my Talon theme and font**, and set **Light or dark** as your Talon is |
 | Ctrl+T still opens Brave's dashboard | The new tab is not set to Homepage, or the home button has no custom address | Repeat step 5 |

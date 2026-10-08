@@ -4,6 +4,8 @@
 //  user gesture and gets one nowhere else.
 
 import { normaliseOrigin, patternFor } from './lib/ship.js'
+import { lookSaid, CACHE, BG_KEY } from './lib/theme.js'
+import { coordsOf } from './lib/sky.js'
 
 const $ = (id) => document.getElementById(id)
 const say = (text, bad = false) => {
@@ -98,5 +100,82 @@ $('daycopy').addEventListener('click', async () => {
 })
 $('dayntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/getStarted' }))
 $('dayopen').addEventListener('click', () => chrome.tabs.create({ url: DAY }))
+
+//  ── the day page's look ──────────────────────────────────────────────
+
+const DAYKEYS = ['ship', 'origin', 'talonLook', 'useTalonTheme', 'dayMode', 'place']
+let day = {}
+
+function dayShow() {
+  const look = day.talonLook && day.talonLook.origin === day.origin ? day.talonLook : null
+  $('lookread').textContent = day.origin ? lookSaid(look, day.ship) : 'Connect a ship above, and its Talon theme is read from it.'
+  $('talontheme').checked = day.useTalonTheme !== false
+  $('mode').value = day.dayMode || 'system'
+  $('placenow').textContent = day.place ? `The clock is set to ${day.place.label}.` : 'No location set: the clock shows an even day and no weather.'
+  $('placeclear').hidden = !day.place
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !DAYKEYS.some((k) => k in changes)) return
+  for (const k of DAYKEYS) if (k in changes) day[k] = changes[k].newValue
+  dayShow()
+})
+
+$('talontheme').addEventListener('change', () => chrome.storage.local.set({ useTalonTheme: $('talontheme').checked }))
+$('mode').addEventListener('change', () => chrome.storage.local.set({ dayMode: $('mode').value }))
+
+//  Typed coordinates are taken as they are; anything else is looked up,
+//  by the worker, only when asked.
+const line = (text) => Object.assign(document.createElement('p'), { textContent: text, className: 'note' })
+$('placeform').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const q = $('placeq').value
+  const typed = coordsOf(q)
+  if (typed) { await chrome.storage.local.set({ place: typed }); $('places').replaceChildren(); return }
+  if (!q.trim()) return
+  $('places').replaceChildren(line('…'))
+  const r = await chrome.runtime.sendMessage({ kind: 'places', q })
+  if (!r.ok) { $('places').replaceChildren(line(`Open-Meteo did not answer: ${r.error}`)); return }
+  $('places').replaceChildren(...(r.places.length ? r.places.map((place) => Object.assign(document.createElement('button'), {
+    textContent: place.label,
+    onclick: async () => { await chrome.storage.local.set({ place }); $('places').replaceChildren() },
+  })) : [line('No place by that name.')]))
+})
+$('placeclear').addEventListener('click', () => chrome.storage.local.remove(['place', 'weather']))
+
+//  The background, in this browser's Cache Storage; every open day tab
+//  redraws when backgroundAt changes.
+async function bgShow() {
+  const has = await caches.open(CACHE).then((c) => c.match(BG_KEY)).catch(() => null)
+  $('bgremove').hidden = !has
+}
+$('bgfile').addEventListener('change', async () => {
+  const f = $('bgfile').files[0]
+  $('bgfile').value = ''
+  if (!f) return
+  if (!f.type.startsWith('image/')) { $('bgsay').textContent = `${f.name} is not an image.`; return }
+  try {
+    await (await caches.open(CACHE)).put(BG_KEY, new Response(f, { headers: { 'content-type': f.type } }))
+  } catch (e) {
+    $('bgsay').textContent = `Could not keep it: ${e.message || e}`
+    return
+  }
+  $('bgsay').textContent = `${f.name} is the background. Kept in this browser only.`
+  await chrome.storage.local.set({ backgroundAt: Date.now() })
+  bgShow()
+})
+$('bgremove').addEventListener('click', async () => {
+  await (await caches.open(CACHE)).delete(BG_KEY)
+  $('bgsay').textContent = 'No background. Kept in this browser only.'
+  await chrome.storage.local.set({ backgroundAt: Date.now() })
+  bgShow()
+})
+
+day = await chrome.storage.local.get(DAYKEYS)
+dayShow()
+bgShow()
+if (location.hash === '#clock') { $('placeq').scrollIntoView({ block: 'center' }); $('placeq').focus() }
+//  what Options shows of Talon's look is read now: one scry
+chrome.runtime.sendMessage({ kind: 'look' }).catch(() => {})
 
 refresh()

@@ -14,12 +14,18 @@
 //    failures, live  a missing app, a 403, a 502 and a dropped connection,
 //                    one card each, the others drawn
 //    leaving midway  a refresh finishes after the tab closes
-//    Talon's theme   the active custom theme read off %settings and set on
-//                    the page, off when turned off, built-in on a 404
+//    Talon's look    read at once when the page has none; the active
+//                    custom theme and Talon's font set on the page, the
+//                    font's file kept once; turned off and light or dark
+//                    chosen in Options; built-in on a 404; Options says
+//                    what was read
+//    arranging       a right-click starts it, a card moved a step and one
+//                    dropped on another, the order kept for a new tab
+//    no settings     the page carries none: they are in Options
 //    the sky clock   drawn with no ship at all, asking for a location and
 //                    fetching no weather without one; a stored forecast
 //                    drawn on it, not fetched again while fresh
-//    a background    an image chosen is behind the page, in a new tab too,
+//    a background    an image chosen in Options is behind the page, in a new tab too,
 //                    and gone when removed; a file that is not one is refused
 //
 //    node scripts/today-check.js        (BROWSER names the binary;
@@ -31,6 +37,7 @@ import { join, dirname } from 'node:path'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 import { patternFor, localDate } from '../lib/ship.js'
 
 //  ── the stand-in ship ────────────────────────────────────────────────
@@ -41,6 +48,10 @@ const todayUtc = Date.UTC(y, m - 1, d)
 const asked = []
 let mode = 'ok'
 let slow = 0
+
+//  a font file Talon installed, named by its sha256 as grubbery keeps it
+const FONT = Buffer.from('not really a font, but its own hash')
+const FONT_ID = createHash('sha256').update(FONT).digest('hex')
 
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
@@ -53,6 +64,7 @@ const fixtures = {
   '/~/scry/settings/bucket/talon/ui-prefs.json': { bucket: {
     themes: JSON.stringify({ activeId: 't1', themes: [{ id: 't1', name: 'Night', dark: true, primary: '#7C3AED', secondary: '#0EA5E9', tertiary: '#10B981', background: '#0B0B10', surface: '#14141C' }] }),
     accent: JSON.stringify({ enabled: false, mode: 'Brand' }),
+    fonts: JSON.stringify({ family: 'Test', fonts: [{ id: FONT_ID, family: 'Test', weight: 400, italic: false }], removed: [] }),
   } },
   '/apps/armillary/api/account': { ship: '~zod', balance: 12345678, keys_pending: [{ secret: 'sk-or-SECRET' }], vendor: '~wex', self: '~zod', stale: 3 },
 }
@@ -75,6 +87,7 @@ const server = createServer((req, res) => {
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
   }
+  if (path === `/grubbery/api/file/talon/fonts/${FONT_ID}.font`) return res.writeHead(200, { 'content-type': 'application/octet-stream' }).end(FONT)
   if (path in fixtures) return setTimeout(() => json(res, fixtures[path]), path.startsWith('/apps/armillary/') ? slow : 0)
   res.writeHead(404).end('not here')
 })
@@ -162,8 +175,9 @@ const PAGE = `chrome-extension://${new URL(worker.url).host}/today.html`
 
 //  Open the page, wait until its text has everything in `want` (or time
 //  runs out), and hand back the text and a session for driving it.
-async function page(want, ms = 15000) {
-  const { targetId } = await cdp('Target.createTarget', { url: PAGE })
+const OPTIONS = PAGE.replace('today.html', 'options.html')
+async function page(want, ms = 15000, url = PAGE) {
+  const { targetId } = await cdp('Target.createTarget', { url })
   const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true })
   await cdp('Runtime.enable', {}, sessionId)
   return { targetId, sessionId, text: await textOf(sessionId, want, ms) }
@@ -212,6 +226,7 @@ try {
     cloudCover: 0.7, condition: 'RAIN', hourlyCloud: [], hourlyCondition: [], zoneId: 'Europe/Lisbon', moonElongationDeg: null, dateLabel: '', twilight: 60, polar: false, polarDay: false,
   } }
   await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards },
+    talonLook: { origin: SHIP, at: now, themes: null, accent: null, fonts: null },
     place: { lat: 38.72, lon: -9.13, label: 'Lisbon, Portugal', elevationMetres: 45, timeZoneId: 'Europe/Lisbon' }, weather: forecast })
   t = await page(['Cached standup', 'Cached action', 'Cached subject', '$2.50', 'Rain'])
   check('clock: the stored forecast is on the dial', has(t.text, ['Lisbon, Portugal', 'Rain']).length === 0 && (t.text.includes('71°') || t.text.includes('21°')) && /H (75|24)°/.test(t.text), t.text)
@@ -226,6 +241,20 @@ try {
   check('cached: every card drawn', has(t.text, ['Cached standup', 'Cached action', '4 unread', 'Cached subject', '$2.50', 'with ~wex']).length === 0, t.text)
   check('cached: nothing asked of the ship', asked.length === 0, asked.join('\n'))
   check('cached: no exception in the page', errors.length === 0, errors.join('\n'))
+  check('no settings on the page: they are in Options', !/Customize|In Brave this page|Background image/.test(t.text) && t.text.includes('Good ') && t.text.includes(', ~zod'), t.text)
+  await close(t)
+
+  //  2b. the same, with no look kept: it is read at once, the snapshot
+  //  still fresh, and the font's file is fetched and kept
+  await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards } })
+  t = await page(['Cached standup'])
+  const prop = (k, s = t.sessionId) => evaluate(`document.documentElement.style.getPropertyValue('${k}')`, s)
+  const until = async (k, want, s = t.sessionId) => { for (let i = 0; i < 25 && await prop(k, s) !== want; i++) await new Promise((r) => setTimeout(r, 200)); return prop(k, s) }
+  check('look: read at once when the page has none', await until('--bg', '#14141c') === '#14141c' && await prop('color-scheme') === 'dark', await prop('--bg'))
+  check('look: only the look is read, the fresh cards are not', JSON.stringify(asked.sort()) === JSON.stringify(['GET /~/scry/settings/bucket/talon/ui-prefs.json', `GET /grubbery/api/file/talon/fonts/${FONT_ID}.font`].sort()), asked.join('\n'))
+  check('look: Talon\'s font is the page\'s', await prop('--font') === '"Test", sans-serif', await prop('--font'))
+  check('look: the font\'s file is kept, checked against its name', await evaluate(`caches.open('nisfeb-day').then((c) => c.match('https://day.nisfeb.invalid/fonts/${FONT_ID}')).then(Boolean)`, t.sessionId) === true)
+  check('look: kept for the next tab\'s first paint', (await evaluate('localStorage.dayLook', t.sessionId) || '').includes('#14141c'))
   await close(t)
 
   //  3. a snapshot whose cards failed: each says why, the data stays
@@ -242,13 +271,14 @@ try {
     'Signed out of ~zod: connect again in Options.',
     'Cached subject',
     '$2.50',
-    '~zod: signed out, connect again in Options',
+    'signed out, connect again in Options',
   ]
   check('cached failures: each card\'s words, the old data kept', has(t.text, said).length === 0, `missing: ${has(t.text, said).join(' | ')}\n${t.text}`)
   await close(t)
 
   //  4. a refresh against the stand-in: every source once, then the cards
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
+  asked.length = 0
   const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', '$0.42 on its model this month', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
   t = await page(live, 30000)
   check('refresh: every card drawn from the ship', has(t.text, live).length === 0, `missing: ${has(t.text, live).join(' | ')}\n${t.text}`)
@@ -277,15 +307,38 @@ try {
   await new Promise((r) => setTimeout(r, 1500))
   check('a second tab within five minutes asks nothing', asked.length === before, asked.slice(before).join('\n'))
   check('refresh: no exception in the page', errors.length === 0, errors.join('\n'))
-  const prop = (k) => evaluate(`document.documentElement.style.getPropertyValue('${k}')`, t.sessionId)
-  const lookOn = async () => { for (let i = 0; i < 25 && await prop('--bg') !== '#14141c'; i++) await new Promise((r) => setTimeout(r, 200)); return prop('--bg') }
-  check('theme: Talon\'s active custom theme is on the page', await lookOn() === '#14141c' && await prop('color-scheme') === 'dark', await prop('--bg'))
-  check('theme: kept for the next tab\'s first paint', (await evaluate('localStorage.dayLook', t.sessionId) || '').includes('#14141c'))
-  await evaluate("document.getElementById('talontheme').click()", t.sessionId)
-  await new Promise((r) => setTimeout(r, 500))
-  check('theme: turned off, the built-in colours', await prop('--bg') === '' && JSON.parse(await evaluate('localStorage.dayLook', t.sessionId)).constructor === Object, await prop('--bg'))
-  await evaluate("document.getElementById('talontheme').click()", t.sessionId)
-  check('theme: and back on', await lookOn() === '#14141c')
+  //  Talon's look, set in Options and seen on the page
+  check('look: on the page after a refresh', await until('--bg', '#14141c') === '#14141c')
+  const o = await page(['Light or dark'], 15000, OPTIONS)
+  check('look: Options says what was read', (await textOf(o.sessionId, ['Read from'])).includes('Talon\'s theme here is "Night", dark. Its font is Test. Read from ~zod at'), o.text)
+  await evaluate("document.getElementById('talontheme').click()", o.sessionId)
+  check('look: turned off in Options, the built-in colours', await until('--bg', '') === '' && await prop('--font') === '')
+  await evaluate("(() => { const m = document.getElementById('mode'); m.value = 'dark'; m.dispatchEvent(new Event('change')) })()", o.sessionId)
+  check('look: dark chosen in Options, Talon\'s built-in dark', await until('--bg', '#1a1625') === '#1a1625')
+  await evaluate("(() => { const m = document.getElementById('mode'); m.value = 'system'; m.dispatchEvent(new Event('change')) })()", o.sessionId)
+  check('look: as the system is, nothing set', await until('--bg', '') === '')
+  await evaluate("document.getElementById('talontheme').click()", o.sessionId)
+  check('look: and back on', await until('--bg', '#14141c') === '#14141c')
+
+  //  arranging: a right-click, a step, a drop, kept for a new tab
+  const orderOf = (k, s = t.sessionId) => evaluate(`Number(document.getElementById('${k}').style.order)`, s)
+  await evaluate("document.querySelector('#mail .body').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))", t.sessionId)
+  check('arranging: a right-click on a card starts it', await evaluate("document.body.classList.contains('arranging') && !document.getElementById('done').hidden", t.sessionId) === true)
+  await evaluate("document.querySelector('#mail .move button').click()", t.sessionId)
+  for (let i = 0; i < 20 && await orderOf('mail') !== 2; i++) await new Promise((r) => setTimeout(r, 100))
+  check('arranging: a card moved a step earlier', await orderOf('mail') === 2 && await orderOf('actions') === 3, `${await orderOf('mail')} ${await orderOf('actions')}`)
+  await evaluate(`(() => {
+    const dt = new DataTransfer()
+    document.getElementById('money').dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }))
+    document.getElementById('clock').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+  })()`, t.sessionId)
+  for (let i = 0; i < 20 && await orderOf('money') !== 0; i++) await new Promise((r) => setTimeout(r, 100))
+  check('arranging: a card dropped on another takes its place', await orderOf('money') === 0 && await orderOf('clock') === 1)
+  const t3 = await page(['Trip to Lisbon'])
+  check('arranging: the order is kept for a new tab', await orderOf('money', t3.sessionId) === 0 && await orderOf('mail', t3.sessionId) === 3)
+  await close(t3)
+  await evaluate("document.getElementById('done').click()", t.sessionId)
+  check('arranging: Done ends it', await evaluate("document.body.classList.contains('arranging')", t.sessionId) === false)
   if (process.env.SHOT) {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false }, t.sessionId)
     writeFileSync(process.env.SHOT, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
@@ -297,20 +350,24 @@ try {
     const blob = '${type}' === 'image/png' ? await c.convertToBlob() : new Blob(['not a picture'], { type: '${type}' })
     const dt = new DataTransfer(); dt.items.add(new File([blob], 'x', { type: '${type}' }))
     const input = document.getElementById('bgfile'); input.files = dt.files; input.dispatchEvent(new Event('change'))
-  })()`, t.sessionId)
+  })()`, o.sessionId)
   const pictured = (s) => evaluate("document.body.classList.contains('pictured') && document.body.style.backgroundImage.startsWith('url(\"blob:')", s)
   const settle = async (s, want) => { for (let i = 0; i < 25 && await pictured(s) !== want; i++) await new Promise((r) => setTimeout(r, 200)); return pictured(s) }
   await choose('text/plain')
-  await evaluate("document.getElementById('look').open = true", t.sessionId)
-  const said1 = await textOf(t.sessionId, ['is not an image'], 3000)
+  const said1 = await textOf(o.sessionId, ['is not an image'], 3000)
   check('background: a file that is not an image is refused', said1.includes('x is not an image.') && !await pictured(t.sessionId), said1.slice(-300))
   await choose('image/png')
-  check('background: the image chosen is behind the page', await settle(t.sessionId, true) === true, await evaluate("document.getElementById('bgsay').textContent", t.sessionId))
+  check('background: the image chosen in Options is behind the page', await settle(t.sessionId, true) === true, await evaluate("document.getElementById('bgsay').textContent", o.sessionId))
   const t2 = await page(['Trip to Lisbon'])
   check('background: a new tab has it too', await settle(t2.sessionId, true) === true)
-  await evaluate("document.getElementById('bgremove').click()", t.sessionId)
+  await evaluate("document.getElementById('bgremove').click()", o.sessionId)
   check('background: removed, from every open tab', await settle(t.sessionId, false) === false && await settle(t2.sessionId, false) === false)
   await close(t2)
+  await close(o)
+  //  the clock's place is set in Options
+  await evaluate("document.getElementById('where').click()", t.sessionId)
+  await new Promise((r) => setTimeout(r, 800))
+  check('clock: "Set a location" opens Options at the place', (await cdp('Target.getTargets')).targetInfos.some((x) => x.url.endsWith('/options.html#clock')))
 
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })

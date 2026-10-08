@@ -14,6 +14,13 @@
     .note { margin-top: .35rem; font-size: .85em; opacity: .7; }
     #status { margin-top: 1.5rem; padding: .75rem; border-left: 3px solid #f9a804; }
     .bad { border-left-color: #c0392b !important; }
+    h2 { font-size: 1.05rem; margin: 2.5rem 0 0; padding-top: 1rem; border-top: 1px solid #8884; }
+    label.check { display: flex; gap: .5rem; align-items: center; font-weight: 600; }
+    label.check input { width: auto; }
+    select { padding: .45rem; font: inherit; }
+    form.row { display: flex; gap: .5rem; align-items: center; } form.row input { flex: 1; } form.row button { margin-top: 0; }
+    #places { display: grid; gap: .3rem; margin-top: .5rem; } #places button { margin-top: 0; text-align: left; }
+    #places p { margin: 0; font-size: .85em; }
   </style>
 </head>
 <body>
@@ -41,9 +48,37 @@
   <label><input id="links" type="checkbox" style="width:auto"> Clickable Urbit links on web pages</label>
   <p class="note">Turns <code>urb://</code> addresses and furum's <code>f/~host/board</code> into links on the pages you read: a furum board opens on your ship, and an <code>urb://</code> link keeps its own address (for Lattice or Talon on this computer) with a <strong>↗</strong> beside it to open it in Lattice on your ship. A script has to run on every page for this, so turning it on asks the browser for access to all sites. The script only reads page text and adds links; it sends nothing anywhere. Turning it off stops the script; the site access stays until you remove it in the browser's extension settings.</p>
 
+  <h2>The day page</h2>
+  <p class="note">Your day, drawn as Talon's home page: its sky clock, today's events, Orrery's open actions and its spend this month, the mail waiting and your Armillary balance. The <strong>Today</strong> button in the popup opens it. To arrange the cards, right-click or long-press any of them on the page, as in Talon, then drag them or use their arrows, and press <strong>Done</strong>.</p>
+
+  <label class="check"><input id="talontheme" type="checkbox"> Use my Talon theme and font</label>
+  <p class="note" id="lookread">Not read from your ship yet.</p>
+  <label for="mode">Light or dark</label>
+  <select id="mode">
+    <option value="system">As the system is</option>
+    <option value="light">Light</option>
+    <option value="dark">Dark</option>
+  </select>
+  <p class="note">Talon keeps this per device, so it never reaches your ship: set it as your Talon is. A custom Talon theme brings its own light or dark.</p>
+
+  <label for="placeq" id="clock">Location for the clock</label>
+  <form class="row" id="placeform" autocomplete="off">
+    <input id="placeq" placeholder="A town, a postcode, or 51.5, -0.13">
+    <button>Find</button>
+  </form>
+  <div id="places"></div>
+  <p class="note" id="placenow">No location set: the clock shows an even day and no weather.</p>
+  <p class="note">Finding a place sends what you type to Open-Meteo, unless it is coordinates. Once a place is set, the clock asks Open-Meteo for its weather every half hour, with the position rounded to about a kilometre. With no place, nothing is sent.</p>
+  <button id="placeclear" hidden>Forget the location</button>
+
+  <label for="bgfile">Background image</label>
+  <input type="file" id="bgfile" accept="image/*">
+  <p class="note" id="bgsay">Kept in this browser only.</p>
+  <button id="bgremove" hidden>Remove the background</button>
+
   <label for="dayurl">Your day as the new tab</label>
   <input id="dayurl" readonly>
-  <p class="note">A page with today's events, unread chats and mentions, open Orrery actions, mail waiting and your Armillary balance, with a reply box. The <strong>Today</strong> button in the popup opens it. To make it the new tab in Brave, two settings, both yours to change back: under <strong>Appearance</strong>, turn on <strong>Show home button</strong> and give it the address above as its custom address; under <strong>Get started</strong>, set <strong>New tab page shows</strong> to <strong>Homepage</strong>. Choose <strong>Dashboard</strong> there to have Brave's own new tab back. The extension never replaces the new tab itself. Chrome has no such setting, so in Chrome the page opens from the popup.</p>
+  <p class="note"> To make it the new tab in Brave, two settings, both yours to change back: under <strong>Appearance</strong>, turn on <strong>Show home button</strong> and give it the address above as its custom address; under <strong>Get started</strong>, set <strong>New tab page shows</strong> to <strong>Homepage</strong>. Choose <strong>Dashboard</strong> there to have Brave's own new tab back. The extension never replaces the new tab itself. Chrome has no such setting, so in Chrome the page opens from the popup.</p>
   <button id="daycopy">Copy the address</button>
   <button id="dayntp">Open Brave's new tab settings</button>
   <button id="dayopen">Open it</button>
