@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { lerp, css, lum, themeVars, activeOf, accentOf, wantsProfile, profileHex, lookOf, lookVars, VARS } from '../lib/theme.js'
+import { lerp, css, lum, themeVars, activeOf, accentOf, wantsProfile, profileHex, lookOf, lookVars, lookSaid, fontOf, fontStack, BUILT_IN, VARS } from '../lib/theme.js'
 
 //  Talon's ThemeSettings, as SettingsSyncImpl writes it: the value of
 //  each entry is the JSON as a string.
@@ -28,7 +28,7 @@ test('a custom theme: customScheme\'s roles on its surface', () => {
   assert.equal(v['--raised'], css(lerp([0x14, 0x14, 0x1c], [255, 255, 255], 0.06)))
   assert.equal(v['--outline'], css(lerp([0x14, 0x14, 0x1c], [0xfa, 0xfa, 0xf9], 0.4)))
   assert.equal(v['--line'], css(lerp([0x14, 0x14, 0x1c], [0xfa, 0xfa, 0xf9], 0.15)))
-  assert.deepEqual(Object.keys(v).sort(), [...VARS].sort())
+  assert.deepEqual(Object.keys(v).sort(), VARS.filter((k) => k !== '--font').sort())
   //  a light one: ink on it, and its own extras where set
   const light = themeVars({ ...NIGHT, dark: false, surface: '#FFF8F0', primary: '#FDE68A', text: '#333333', muted: '#777777', error: '#B00020' })
   assert.equal(light['color-scheme'], 'light')
@@ -68,6 +68,7 @@ test('what the page sets, from the bucket the ship answers', () => {
   const look = lookOf(bucket({ themes: [NIGHT], activeId: 't1' }))
   assert.equal(lookVars(look)['--bg'], '#14141c')
   assert.deepEqual(lookVars(look, false), {}, 'turned off here')
+  assert.deepEqual(lookVars(look, false, 'dark'), BUILT_IN.dark, 'turned off, in the dark chosen here')
   //  an accent over the built-in look sets only the accent
   const accent = lookVars(lookOf(bucket({ themes: [] }, { enabled: true, mode: 'Custom', customHex: '#FFEE00' })))
   assert.deepEqual(accent, { '--accent': '#ffee00', '--on-accent': '#1c1917' })
@@ -77,5 +78,49 @@ test('what the page sets, from the bucket the ship answers', () => {
   assert.equal(both['--on-accent'], '#ffffff')
   assert.equal(both['--bg'], '#14141c')
   //  an entry that is not JSON is no entry
-  assert.deepEqual(lookOf({ bucket: { themes: '{nope', accent: 'x' } }), { themes: null, accent: null })
+  assert.deepEqual(lookOf({ bucket: { themes: '{nope', accent: 'x' } }), { themes: null, accent: null, fonts: null })
+})
+
+test('light or dark, chosen here as Talon chooses it per device', () => {
+  const builtIn = lookOf(bucket({ themes: [] }))
+  assert.deepEqual(lookVars(builtIn, true, 'system'), {}, 'the system decides')
+  assert.deepEqual(lookVars(builtIn, true, 'dark'), BUILT_IN.dark)
+  assert.deepEqual(lookVars(null, true, 'light'), BUILT_IN.light, 'before any read too')
+  assert.deepEqual(Object.keys(BUILT_IN.dark).sort(), VARS.filter((k) => k !== '--font').sort())
+  //  a custom theme brings its own
+  const custom = lookOf(bucket({ themes: [NIGHT], activeId: 't1' }))
+  assert.equal(lookVars(custom, true, 'light')['color-scheme'], 'dark')
+  //  the accent goes over the chosen palette
+  assert.equal(lookVars(lookOf(bucket({ themes: [] }, { enabled: true, mode: 'Custom', customHex: '#123456' })), true, 'dark')['--accent'], '#123456')
+})
+
+test('what Options says was read', () => {
+  const at = Date.UTC(2026, 9, 8, 15)
+  assert.equal(lookSaid(null), 'Not read from your ship yet.')
+  assert.match(lookSaid({ error: 'HTTP 500' }), /could not be read: HTTP 500/)
+  assert.match(lookSaid({ ...lookOf(bucket({ themes: [NIGHT], activeId: 't1' })), at }, '~zod'), /^Talon's theme here is "Night", dark\. Its font is the system's\. Read from ~zod at /)
+  assert.match(lookSaid({ ...lookOf(bucket({ themes: [] }, { enabled: true, mode: 'Custom', customHex: '#123456' })), at }), /built-in theme.*, with its accent #123456\./)
+})
+
+test('Talon\'s font: the family chosen, its files, never a removed one', () => {
+  const A = 'a'.repeat(64)
+  const B = 'b'.repeat(64)
+  const C = 'c'.repeat(64)
+  const fonts = { family: 'Inter', fonts: [
+    { id: A, family: 'Inter', weight: 400, italic: false },
+    { id: B, family: 'Inter', weight: 700, italic: true },
+    { id: C, family: 'Lora', weight: 400 },
+    { id: 'not-a-hash', family: 'Inter' },
+  ], removed: [B] }
+  assert.deepEqual(fontOf({ fonts }), { family: 'Inter', faces: [{ id: A, weight: 400, italic: false }] })
+  assert.equal(fontOf({ fonts: { family: null, fonts: [] } }), null, 'the system\'s')
+  assert.deepEqual(fontOf({ fonts: { family: 'serif' } }), { family: 'serif', faces: [] })
+  assert.equal(fontOf(null), null)
+  assert.equal(fontStack('serif'), 'Georgia, "Times New Roman", serif')
+  assert.equal(fontStack('In"ter'), '"Inter", sans-serif')
+  //  on the page, with the theme, and gone with it turned off
+  const look = lookOf({ bucket: { fonts: JSON.stringify(fonts) } })
+  assert.equal(lookVars(look)['--font'], '"Inter", sans-serif')
+  assert.equal(lookVars(look, false)['--font'], undefined)
+  assert.match(lookSaid({ ...look, at: Date.now() }), /Its font is Inter\./)
 })

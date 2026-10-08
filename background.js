@@ -9,7 +9,7 @@ import {
 import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
 } from './lib/today.js'
-import { lookOf, wantsProfile, profileHex } from './lib/theme.js'
+import { lookOf, wantsProfile, profileHex, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
 
 //  Chrome groups several items of one extension under its name, so these
@@ -169,6 +169,44 @@ async function dayLook(s, prev) {
   return look
 }
 
+//  The files of the font chosen in Talon, each fetched once and kept in
+//  this browser's Cache Storage, and only if its sha256 is its name, as
+//  Talon checks it. One request to grubbery per file, ever.
+async function keepFonts(s, look) {
+  const f = fontOf(look)
+  if (!f || !f.faces.length) return
+  const cache = await caches.open(CACHE)
+  for (const face of f.faces) {
+    if (await cache.match(fontKey(face.id))) continue
+    const r = await s.reach(`/grubbery/api/file/talon/fonts/${face.id}.font`)
+    if (!r.ok) continue
+    const bytes = await r.arrayBuffer()
+    const sum = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('')
+    if (sum === face.id) await cache.put(fontKey(face.id), new Response(bytes))
+  }
+}
+
+//  Read Talon's look and keep it, or keep the last one with the failure
+//  beside it, for Options to show. One read at a time.
+let lookRun = null
+function readLook(origin) {
+  if (!lookRun) {
+    lookRun = (async () => {
+      const { talonLook: prev } = await chrome.storage.local.get('talonLook')
+      const mine = prev && prev.origin === origin ? prev : null
+      try {
+        const s = new Ship(origin)
+        const look = await dayLook(s, mine)
+        await keepFonts(s, look).catch(() => { /* the system's font until the next read */ })
+        await chrome.storage.local.set({ talonLook: { origin, at: Date.now(), ...look } })
+      } catch (e) {
+        await chrome.storage.local.set({ talonLook: { ...mine, origin, error: e.message || String(e) } })
+      }
+    })().finally(() => { lookRun = null })
+  }
+  return lookRun
+}
+
 //  A failure as the status needs it: signed out, no answer, or neither.
 const outOf = (e) => (e instanceof ApiError && e.signedOut ? 'signed-out'
   : e instanceof UnreachableError || (e instanceof ApiError && [502, 503, 504].includes(e.status)) ? 'unreachable' : '')
@@ -189,9 +227,7 @@ async function refreshDay(origin, snap) {
     money: async () => balanceOf(await s.account()),
   }
   const keys = Object.keys(jobs)
-  const { talonLook: prevLook } = await chrome.storage.local.get('talonLook')
-  const looked = dayLook(s, prevLook && prevLook.origin === origin ? prevLook : null)
-    .then((look) => chrome.storage.local.set({ talonLook: { origin, at: Date.now(), ...look } }), () => {})
+  const looked = readLook(origin)
   const got = await Promise.all(keys.map((k) => jobs[k]().then(
     (data) => ({ data }),
     (e) => ({ error: e.message || String(e), out: outOf(e) }),
@@ -207,10 +243,13 @@ async function refreshDay(origin, snap) {
 
 //  The page reads the snapshot itself and asks this for a refresh. The
 //  answer waits for the read, which keeps the worker awake through it.
+//  A page with no look for this ship yet (a new install, a ship changed)
+//  has it read at once rather than at the next refresh.
 async function today() {
-  const { origin, today: snap } = await chrome.storage.local.get(['origin', 'today'])
+  const { origin, today: snap, talonLook } = await chrome.storage.local.get(['origin', 'today', 'talonLook'])
   if (!origin) return { ok: false, error: 'no ship yet: set one up in Options' }
   if (!dayRun && due(snap, origin, Date.now())) dayRun = refreshDay(origin, snap).finally(() => { dayRun = null })
+  else if (!dayRun && !(talonLook && talonLook.origin === origin && talonLook.at)) await readLook(origin)
   if (dayRun) await dayRun
   return { ok: true }
 }
@@ -345,6 +384,12 @@ const actions = {
   }),
 
   today: () => today(),
+  //  Options, when it opens: one scry, so what it shows is current
+  look: async () => {
+    const { origin } = await chrome.storage.local.get('origin')
+    if (origin) await readLook(origin)
+    return { ok: Boolean(origin) }
+  },
   weather: () => weather(),
   places: (m) => places(String(m.q || '')),
 

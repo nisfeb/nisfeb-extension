@@ -7,115 +7,117 @@
   <script src="theme-boot.js"></script>
   <style>
     /* Talon's built-in palette (Theme.kt), light or dark as the system is.
-       A custom Talon theme or accent sets these inline on <html>. */
+       A custom Talon theme, a mode chosen in Options, an accent or Talon's
+       font sets these inline on <html>. */
     :root { color-scheme: light; --bg: #ffffff; --text: #1c1917; --muted: #57534e; --raised: #f5f5f4; --outline: #a8a29e; --line: #e7e5e4; --accent: #f59e0b; --on-accent: #1c1917; --error: #dc2626; }
     @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --bg: #1a1625; --text: #f5f5f4; --muted: #a8a29e; --raised: #27232f; --outline: #44403c; --line: #292524; --accent: #fbbf24; --error: #f87171; } }
-    body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem 1rem 3rem; background: var(--bg); color: var(--text); }
-    header, main, footer { max-width: 64rem; margin: 0 auto; }
-    header { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
-    h1 { font-size: 1.35rem; margin: 0; font-weight: 600; }
-    #who { color: var(--muted); font-size: .9rem; }
+
+    /* Talon's home page (HomeScreen.kt): its typography (Typography.kt,
+       Material's sizes in the system's sans unless Talon has a font),
+       16px of page margin, 14px between widgets, each widget a Panel:
+       surfaceVariant at 30% on the surface, 10px corners, no border, a
+       16px icon and a 14px semibold title over a faint divider. */
+    body { font: 14px/20px var(--font, sans-serif); margin: 0; padding: 16px; background-color: var(--bg); color: var(--text);
+           background-position: center; background-size: cover; background-attachment: fixed; background-repeat: no-repeat; }
+    header, main { max-width: 72rem; margin: 0 auto; }
+    header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    h1 { font-size: 24px; line-height: 32px; font-weight: 600; margin: 0; }
+    #who { color: var(--muted); font-size: 12px; line-height: 16px; display: flex; align-items: center; gap: 6px; }
     .grow { flex: 1; }
-    .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--outline); flex: none; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--outline); flex: none; }
     .dot.ok { background: #2e9e4f; } .dot.bad { background: var(--error); } .dot.warn { background: var(--accent); }
-    main { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); align-items: start; }
-    section { border: 1px solid var(--line); border-radius: .6rem; padding: .8rem 1rem; min-width: 0; background: var(--bg); }
-    h2 { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 .5rem; color: var(--muted); }
-    h2 a { color: inherit; text-decoration: none; }
-    h2 a:hover { text-decoration: underline; }
-    h3 { font-size: .85rem; margin: .8rem 0 .3rem; color: var(--muted); }
+    main { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
+    .panel { background: color-mix(in srgb, var(--raised) 30%, var(--bg)); border-radius: 10px; padding: 10px 0; min-width: 0; position: relative; }
+    .panel > h2 { display: flex; align-items: center; gap: 8px; margin: 0 6px 4px 14px; font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: .1px; min-height: 32px; }
+    .panel > h2 svg { width: 16px; height: 16px; fill: var(--muted); flex: none; }
+    .panel > h2 span { flex: 1; }
+    .panel > h2 a { color: var(--accent); text-decoration: none; font-size: 12px; line-height: 16px; font-weight: 500; padding: 6px 8px; border-radius: 16px; }
+    .panel > h2 a:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .panel > hr { border: 0; border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent); margin: 0 14px; }
+    .body { padding-top: 2px; }
     ul { list-style: none; margin: 0; padding: 0; }
-    li { padding: .2rem 0; overflow-wrap: anywhere; }
-    li.past { opacity: .45; }
-    p { margin: .3rem 0; }
-    .when, .muted { color: var(--muted); font-size: .9em; }
-    .when { display: inline-block; min-width: 5.5rem; }
+    /* QuickRow: a 12px line, 11px muted beside and under it */
+    li { padding: 6px 14px; overflow-wrap: anywhere; }
+    li .row { display: flex; gap: 8px; align-items: baseline; }
+    li .title { flex: 1; font-size: 12px; line-height: 16px; min-width: 0; }
+    li .title.strong { font-weight: 600; }
+    li .side, li .line { font-size: 11px; line-height: 14px; color: var(--muted); }
+    li.past { opacity: .5; }
+    li a { color: inherit; text-decoration: none; }
+    li a:hover { text-decoration: underline; }
+    .body > p, .body > h3 { margin: 0; padding: 10px 14px; font-size: 12px; line-height: 16px; }
+    .body > h3 { padding: 8px 14px 0; color: var(--muted); font-weight: 600; }
+    .muted { color: var(--muted); }
     .bad { color: var(--error); }
-    .big { font-size: 1.6rem; margin: .2rem 0; }
-    a { color: inherit; }
-    button, input { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--outline); border-radius: .4rem; }
-    button { padding: .3rem .7rem; cursor: pointer; }
-    input { padding: .35rem; width: 100%; box-sizing: border-box; }
-    footer { margin-top: 2rem; font-size: .85rem; color: var(--muted); }
-    /* a picture behind the page: the cards and the header stay legible on it */
-    body { background-position: center; background-size: cover; background-attachment: fixed; background-repeat: no-repeat; }
-    body.pictured section, body.pictured header, body.pictured footer { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(8px); }
-    body.pictured header, body.pictured footer { border-radius: .6rem; padding: .5rem .8rem; }
-    /* the sky clock, as Talon's home page draws it: a panel of its own */
-    .clock { width: max-content; max-width: 100%; margin: 0 auto 1.25rem; padding: 6px 12px; border-radius: 10px; background: color-mix(in srgb, var(--raised) 30%, transparent); display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
-    body.pictured .clock { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(8px); }
-    .dial { position: relative; width: min(320px, calc(100vw - 4rem)); aspect-ratio: 1; }
+    .body > p.big { font-size: 24px; line-height: 32px; padding: 6px 14px 0; }
+    button { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--outline); border-radius: 16px; padding: 6px 14px; cursor: pointer; }
+    button.text { background: none; border: 0; color: var(--accent); font-weight: 500; }
+
+    /* the sky clock, as Talon's ClockWeatherPanel: the panel's tint, no header */
+    .clock { padding: 6px 0; display: flex; flex-direction: column; align-items: center; }
+    .dial { position: relative; width: min(300px, calc(100% - 24px)); aspect-ratio: 1; }
     .dial canvas { width: 100%; height: 100%; display: block; }
     .readout { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); pointer-events: none; line-height: 1.3; }
     .readout .time { color: var(--text); font-weight: 500; white-space: nowrap; }
     .readout .date { font-size: 14px; }
     .readout .cond { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: 2px; }
-    .readout .cond svg { width: 14px; height: 14px; }
+    .readout .cond svg { width: 14px; height: 14px; fill: currentColor; }
     .readout .temp { color: var(--text); font-size: 24px; margin-top: 6px; }
     .readout .hilo { display: flex; gap: 10px; font-size: 12px; }
     .readout .hilo .at { font-size: 11px; }
-    .clock button.where { background: none; border: 0; color: var(--accent); font-size: 11px; padding: 2px 12px; }
-    .clock p { font-size: 11px; color: var(--muted); margin: 0 24px 4px; text-align: center; }
-    .places { display: grid; gap: .3rem; }
-    .places button { text-align: left; }
-    form.row { display: flex; gap: .4rem; } form.row input { flex: 1; min-width: 0; }
-    details { margin-top: 1rem; }
-    summary { cursor: pointer; width: max-content; }
-    .opts { display: grid; gap: .6rem; margin-top: .6rem; max-width: 30rem; }
-    .opts label { display: flex; gap: .5rem; align-items: center; }
-    .opts input[type=checkbox] { width: auto; accent-color: var(--accent); }
+    .clock button.where { background: none; border: 0; color: var(--accent); font-size: 11px; line-height: 14px; padding: 2px 12px; }
+    .clock p { font-size: 11px; line-height: 14px; color: var(--muted); margin: 0 24px; text-align: center; }
+
+    /* over a picture of the owner's, the panels stay legible */
+    body.pictured .panel, body.pictured header { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(8px); }
+    body.pictured header { border-radius: 10px; padding: 8px 14px; }
+
+    /* arranging, as Talon's: a long press or a right-click on any card
+       starts it, cards are dragged to their places, Done ends it */
+    body.arranging .panel { outline: 1px solid var(--line); cursor: grab; user-select: none; }
+    body.arranging .panel.held { outline-color: var(--accent); opacity: .6; }
+    body.arranging .panel.over { outline: 2px solid var(--accent); }
+    .move { display: none; position: absolute; top: 8px; right: 8px; gap: 4px; z-index: 1; }
+    body.arranging .move { display: flex; }
+    .move button { padding: 2px 8px; font-size: 12px; }
     [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <header>
-    <span class="dot" id="dot"></span>
-    <h1 id="date"></h1>
-    <span id="who"></span>
+    <h1 id="hello"></h1>
+    <span id="who"><span class="dot" id="dot"></span><span id="whotext"></span></span>
     <span class="grow"></span>
-    <button id="opts">Options</button>
+    <button class="text" id="done" hidden>Done</button>
+    <button class="text" id="opts">Options</button>
   </header>
 
-  <div class="clock" id="clock">
-    <div class="dial"><canvas id="dial" role="img"></canvas><div class="readout" id="readout"></div></div>
-    <button class="where" id="where">Set a location</button>
-    <p id="nowhere">Without one the dial shows an even day and no weather.</p>
-  </div>
-
-  <main id="none" hidden>
-    <section><p>No ship yet. Set one up in Options and this page shows your day from it.</p></section>
+  <main id="grid">
+    <section class="panel" id="none" hidden>
+      <div class="body"><p>No ship yet. Set one up in Options and this page shows your day from it.</p></div>
+    </section>
+    <section class="panel clock" id="clock" data-card="clock">
+      <div class="dial"><canvas id="dial" role="img"></canvas><div class="readout" id="readout"></div></div>
+      <button class="where" id="where">Set a location</button>
+      <p id="nowhere">Without one the dial shows an even day and no weather.</p>
+    </section>
+    <section class="panel" id="cal" data-card="cal">
+      <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/></svg><span>Today</span><a data-app="/apps/calendar/">Calendar</a></h2>
+      <hr><div class="body"></div>
+    </section>
+    <section class="panel" id="actions" data-card="actions">
+      <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg><span>Orrery</span><a data-app="/apps/orrery/#inbox">Inbox</a></h2>
+      <hr><div class="body"></div>
+    </section>
+    <section class="panel" id="mail" data-card="mail">
+      <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8l8 5 8-5v10zm-8-7L4 6h16l-8 5z"/></svg><span>Mail</span><a data-app="/apps/auspex/">Inbox</a></h2>
+      <hr><div class="body"></div>
+    </section>
+    <section class="panel" id="money" data-card="money">
+      <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg><span>Armillary</span><a data-app="/apps/armillary/">Open</a></h2>
+      <hr><div class="body"></div>
+    </section>
   </main>
-
-  <main id="cards" hidden>
-    <section id="cal"><h2><a data-app="/apps/calendar/">Today</a></h2><div class="body"></div></section>
-    <section id="actions"><h2><a data-app="/apps/orrery/#inbox">Orrery</a></h2><div class="body"></div></section>
-    <section id="mail"><h2><a data-app="/apps/auspex/">Mail</a></h2><div class="body"></div></section>
-    <section id="money"><h2><a data-app="/apps/armillary/">Armillary</a></h2><div class="body"></div></section>
-  </main>
-
-  <footer>
-    <details id="look">
-      <summary>Customize this page</summary>
-      <div class="opts">
-        <label><input type="checkbox" id="talontheme"> Use my Talon theme</label>
-        <p class="muted">Your custom theme and accent in Talon, read from your ship. Off, or with no custom theme in Talon, the page uses Talon's own colours.</p>
-        <label for="placeq">Location for the clock</label>
-        <form class="row" id="placeform" autocomplete="off">
-          <input id="placeq" placeholder="A town, a postcode, or 51.5, -0.13">
-          <button>Find</button>
-        </form>
-        <div class="places" id="places"></div>
-        <p class="muted">Finding a place sends what you type to Open-Meteo, unless it is coordinates. Once a place is set, the clock asks Open-Meteo for its weather every half hour, with the position rounded to about a kilometre. With no place, nothing is sent.</p>
-        <p><button id="placeclear" hidden>Forget the location</button></p>
-        <label>Background image <input type="file" id="bgfile" accept="image/*"></label>
-        <p><button id="bgremove" hidden>Remove the background</button> <span class="muted" id="bgsay">Kept in this browser only.</span></p>
-      </div>
-    </details>
-    <p id="brave" hidden>
-      In Brave this page is the new tab when the new tab page shows your homepage and the homepage is this page (Options says how). Choose Dashboard there to have Brave's own new tab back.
-      <button id="ntp">Brave's new tab settings</button>
-    </p>
-  </footer>
   <script src="today.js" type="module"></script>
 </body>
 </html>
