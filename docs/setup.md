@@ -69,6 +69,10 @@ The extension does not take over the new tab by itself. An extension that overri
 - **Clickable Urbit links on web pages.** In Options, turn this on and allow access to all sites when asked. `urb://` addresses and furum's `f/~host/board` shorthand on the pages you read become links that open on your ship. Turning it off stops the script. The site access stays until you remove it in the extension's settings.
 - **An Orrery client key.** In Options, paste a client key minted on your orrery's page. Pages you send to Orrery then carry the extension's own name and the key's limits, instead of yours.
 
+## 7. Armillary in Brave Leo (optional)
+
+In Options, under **Use Armillary in Brave Leo**, press **Show Leo's values**. Then press **Open Leo's settings**, add a new model under **Bring your own model**, and paste each value with its **Copy** button. This needs an Armillary lease on your ship; with a proxy, Options says why Leo cannot use it.
+
 ## Updating
 
 ```sh

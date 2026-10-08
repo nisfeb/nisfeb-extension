@@ -24,6 +24,9 @@
 //    no settings     the page carries none: they are in Options
 //    the search box  Search and Research go to Brave Search's own
 //                    addresses (caught before they leave the machine)
+//    Brave Leo       Options shows Leo's form filled from a lease, the key
+//                    masked and copied only on its button, and says why
+//                    not on a proxy
 //    history         pages really visited go to orrery's read channel as
 //                    a digest of sites and titles, a listed site and the
 //                    ship's own pages left out, once the owner turns it on
@@ -61,6 +64,8 @@ let slow = 0
 const script = []
 const completions = []
 const pokes = []
+//  the stand-in Armillary's inference answer; the Leo checks change it
+let inference = null
 
 //  a font file Talon installed, named by its sha256 as grubbery keeps it
 const FONT = Buffer.from('not really a font, but its own hash')
@@ -121,7 +126,7 @@ const server = createServer((req, res) => {
     { id: 't1', cal: 'default', cat: 'todo', meta: { name: 'Pay the rent' }, due_ms: todayUtc, done: false },
     { id: 't2', cal: 'default', cat: 'todo', meta: { name: 'Call mum' }, done: false },
   ])
-  if (path === '/apps/armillary/api/inference') return json(res, { base_url: `http://${req.headers.host}/v1`, key: 'test-key', mode: 'lease', models: ['test-model'] })
+  if (path === '/apps/armillary/api/inference') return json(res, inference || { base_url: `http://${req.headers.host}/v1`, key: 'test-key', mode: 'lease', models: ['test-model'] })
   if (path === '/apps/orrery/api/brief/last') return json(res, { day: '2026-10-08', at: now, text: 'Dana needs an answer about the lease by Friday.' })
   if (req.method === 'POST' && (path === '/v1/chat/completions' || path.startsWith('/grubbery/api/poke/'))) {
     let body = ''
@@ -567,6 +572,22 @@ try {
   for (let i = 0; i < 25 && caught.length < 2; i++) await new Promise((r) => setTimeout(r, 200))
   check('search: Research starts Ask Brave\'s Deep Research', caught[1] === 'https://search.brave.com/ask?q=history%20of%20urbit&enable_research=true', caught.join(' '))
   await close(s2)
+
+  //  Brave Leo: its form from a lease, the key copied only on its button
+  inference = { base_url: 'https://openrouter.example/api/v1', key: 'test-key-wxyz', mode: 'lease', models: ['m-one', 'm-two'] }
+  const lo = await page(['Use Armillary in Brave Leo'], 15000, OPTIONS)
+  await evaluate("navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve() }; document.getElementById('leoshow').click()", lo.sessionId)
+  const leoText = await textOf(lo.sessionId, ['Server endpoint'])
+  check('leo: Options fills Leo\'s form from the lease', leoText.includes('m-one (Armillary)') && leoText.includes('https://openrouter.example/api/v1/chat/completions') && leoText.includes('\u2022'.repeat(8) + 'wxyz'), leoText.slice(-600))
+  check('leo: the key is not on the page', !(await evaluate('document.body.innerHTML', lo.sessionId)).includes('test-key'))
+  await evaluate("[...document.querySelectorAll('.leofield')].find((f) => f.textContent.includes('API Key')).querySelector('button').click()", lo.sessionId)
+  for (let i = 0; i < 20 && !await evaluate('window.__copied || ""', lo.sessionId); i++) await new Promise((r) => setTimeout(r, 100))
+  check('leo: the key is copied only on its button', await evaluate('window.__copied', lo.sessionId) === 'test-key-wxyz')
+  inference = { ...inference, mode: 'proxy' }
+  await evaluate("document.getElementById('leoshow').click()", lo.sessionId)
+  check('leo: on a proxy, why Leo cannot run', (await textOf(lo.sessionId, ['does not pass a stream on'])).includes('Leo needs a lease'))
+  await close(lo)
+  inference = null
 
   //  history into orrery: real visits, a digest, a listed site left out
   for (const u of [`${SITE}/a`, `${SITE}/b`, `${SECRET}/c`]) {

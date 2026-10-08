@@ -21,6 +21,10 @@
     form.row { display: flex; gap: .5rem; align-items: center; } form.row input { flex: 1; } form.row button { margin-top: 0; }
     #places { display: grid; gap: .3rem; margin-top: .5rem; } #places button { margin-top: 0; text-align: left; }
     #places p { margin: 0; font-size: .85em; }
+    .leofield { display: flex; gap: .5rem; align-items: center; margin-top: .6rem; }
+    .leofield div { flex: 1; min-width: 0; }
+    .leofield code { display: block; overflow-wrap: anywhere; }
+    .leofield button, .leofield select { margin-top: 0; }
   </style>
 </head>
 <body>
@@ -83,6 +87,13 @@
   <textarea id="histexclude" rows="4" placeholder="one site per line, e.g. mybank.com (its subdomains too)" style="width:100%;font:inherit;padding:.5rem;box-sizing:border-box"></textarea>
   <p class="note" id="histsaid">Off.</p>
   <button id="histnow" hidden>Send one now</button>
+
+  <div id="leo" hidden>
+    <h2>Use Armillary in Brave Leo</h2>
+    <p class="note">Leo can answer with your Armillary models through its Bring your own model form. The extension cannot fill that form itself: Brave keeps it in its own settings, out of any extension's reach. So here are its values, each to copy and paste.</p>
+    <button id="leoshow">Show Leo's values</button>
+    <div id="leobox"></div>
+  </div>
 
   <label for="dayurl">Your day as the new tab</label>
   <input id="dayurl" readonly>
