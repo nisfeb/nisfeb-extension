@@ -16,6 +16,9 @@
 //    leaving midway  a refresh finishes after the tab closes
 //    Talon's theme   the active custom theme read off %settings and set on
 //                    the page, off when turned off, built-in on a 404
+//    the sky clock   drawn with no ship at all, asking for a location and
+//                    fetching no weather without one; a stored forecast
+//                    drawn on it, not fetched again while fresh
 //    a background    an image chosen is behind the page, in a new tab too,
 //                    and gone when removed; a file that is not one is refused
 //
@@ -190,6 +193,10 @@ try {
   let t = await page(['No ship yet'])
   check('no ship: says so', t.text.includes('No ship yet. Set one up in Options'), t.text)
   check('no ship: asks nothing', asked.length === 0, asked.join('\n'))
+  check('clock: drawn with no ship, asking for a location', /\d:\d\d/.test(t.text) && t.text.includes('Set a location') && t.text.includes('Without one the dial shows an even day and no weather.'), t.text)
+  const inked = await evaluate(`(() => { const c = document.getElementById('dial'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n })()`, t.sessionId)
+  check('clock: the ring is painted', inked > 5000, inked)
+  check('clock: no place, no weather asked for', await evaluate("chrome.storage.local.get('weather').then((s) => s.weather === undefined)", ws1) === true)
   await close(t)
 
   //  2. a stored snapshot, fresh: drawn at once, nothing asked
@@ -199,8 +206,22 @@ try {
     mail: { at: now, error: '', data: { unread: 4, threads: [{ subject: 'Cached subject', from: '~bus', last: now }] } },
     money: { at: now, error: '', data: { vendor: '~wex', balance: 2500000 } },
   }
-  await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards } })
-  t = await page(['Cached standup', 'Cached action', 'Cached subject', '$2.50'])
+  const forecast = { key: '38.72,-9.13', tried: now, at: now, error: '', sky: {
+    minuteOfDay: 0, sunriseMinute: 360, sunsetMinute: 1080, currentC: 21.4, highC: 24, highAtMinute: 900, lowC: 12, lowAtMinute: 300,
+    cloudCover: 0.7, condition: 'RAIN', hourlyCloud: [], hourlyCondition: [], zoneId: 'Europe/Lisbon', moonElongationDeg: null, dateLabel: '', twilight: 60, polar: false, polarDay: false,
+  } }
+  await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards },
+    place: { lat: 38.72, lon: -9.13, label: 'Lisbon, Portugal', elevationMetres: 45, timeZoneId: 'Europe/Lisbon' }, weather: forecast })
+  t = await page(['Cached standup', 'Cached action', 'Cached subject', '$2.50', 'Rain'])
+  check('clock: the stored forecast is on the dial', has(t.text, ['Lisbon, Portugal', 'Rain']).length === 0 && (t.text.includes('71°') || t.text.includes('21°')) && /H (75|24)°/.test(t.text), t.text)
+  check('clock: with a place, no caption asking for one', !t.text.includes('Without one the dial'))
+  check('clock: nothing but words in the readout', !/null|false|undefined/.test(await evaluate("document.getElementById('readout').innerText", t.sessionId)))
+  if (process.env.SHOT2) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false }, t.sessionId)
+    writeFileSync(process.env.SHOT2, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
+  }
+  await new Promise((r) => setTimeout(r, 1000))
+  check('clock: a fresh forecast is not fetched again', await evaluate("chrome.storage.local.get('weather').then((s) => s.weather.tried)", ws1) === now)
   check('cached: every card drawn', has(t.text, ['Cached standup', 'Cached action', '4 unread', 'Cached subject', '$2.50', 'with ~wex']).length === 0, t.text)
   check('cached: nothing asked of the ship', asked.length === 0, asked.join('\n'))
   check('cached: no exception in the page', errors.length === 0, errors.join('\n'))

@@ -8,11 +8,13 @@
 import { explain } from './lib/ship.js'
 import { agenda, money, due } from './lib/today.js'
 import { lookVars, VARS } from './lib/theme.js'
+import { skyFor, placeKey, coordsOf } from './lib/sky.js'
+import { drawDial } from './sky-dial.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
 const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
-const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'backgroundAt']
+const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'backgroundAt', 'place', 'weather']
 const SHOWN = 12
 
 let st = {}
@@ -98,9 +100,49 @@ function look() {
   $('talontheme').checked = st.useTalonTheme !== false
 }
 
+//  ── the sky clock ────────────────────────────────────────────────────
+//
+//  Talon keeps its clock's units per device; here they follow the
+//  browser's language: 24-hour where its clock is, Fahrenheit where its
+//  region uses it.
+const region = (() => { try { return new Intl.Locale(navigator.language).maximize().region } catch { return '' } })()
+const UNITS = {
+  fahrenheit: ['US', 'LR', 'MM', 'BS', 'BZ', 'KY', 'PW', 'FM', 'MH'].includes(region),
+  twentyFourHour: !/h1[12]/.test(new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle || 'h12'),
+}
+
+function paintClock() {
+  const w = st.weather && st.place && st.weather.key === placeKey(st.place) ? st.weather.sky : null
+  drawDial($('dial'), $('readout'), skyFor(Date.now(), st.place || null, w), UNITS)
+  $('where').textContent = st.place ? st.place.label : 'Set a location'
+  $('nowhere').hidden = Boolean(st.place)
+  $('placeclear').hidden = !st.place
+}
+
+$('where').addEventListener('click', () => { $('look').open = true; $('placeq').focus() })
+
+//  Typed coordinates are taken as they are; anything else is looked up.
+$('placeform').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const q = $('placeq').value
+  const typed = coordsOf(q)
+  if (typed) { await chrome.storage.local.set({ place: typed }); $('places').replaceChildren(); return }
+  if (!q.trim()) return
+  $('places').replaceChildren(p('…', 'muted'))
+  const r = await ask({ kind: 'places', q })
+  if (!r.ok) { $('places').replaceChildren(p(`Open-Meteo did not answer: ${r.error}`, 'bad')); return }
+  $('places').replaceChildren(...(r.places.length ? r.places.map((place) => el('button', {
+    textContent: place.label,
+    onclick: async () => { await chrome.storage.local.set({ place }); $('places').replaceChildren() },
+  })) : [p('No place by that name.', 'muted')]))
+})
+
+$('placeclear').addEventListener('click', () => chrome.storage.local.remove(['place', 'weather']))
+
 function render() {
   const now = Date.now()
   look()
+  paintClock()
   $('date').textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
   header()
   $('none').hidden = Boolean(st.origin)
@@ -178,14 +220,24 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !KEYS.some((k) => k in changes)) return
   for (const k of KEYS) if (k in changes) st[k] = changes[k].newValue
   if ('backgroundAt' in changes) background()
+  if ('place' in changes) ask({ kind: 'weather' }).catch(() => {})
   render()
 })
 
-const again = () => { if (document.visibilityState === 'visible') { render(); refresh() } }
+const again = () => {
+  if (document.visibilityState !== 'visible') return
+  render()
+  refresh()
+  ask({ kind: 'weather' }).catch(() => { /* the worker is reloading: the next view asks again */ })
+}
 document.addEventListener('visibilitychange', again)
 setInterval(again, 15 * 60000)
+//  the clock's minute, and the window's width
+setInterval(() => { if (document.visibilityState === 'visible') paintClock() }, 10000)
+addEventListener('resize', paintClock)
 
 st = await chrome.storage.local.get(KEYS)
 render()
 background()
+ask({ kind: 'weather' }).catch(() => {})
 refresh()

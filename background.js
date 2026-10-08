@@ -10,6 +10,7 @@ import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, balanceOf,
 } from './lib/today.js'
 import { lookOf, wantsProfile, profileHex } from './lib/theme.js'
+import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
 
 //  Chrome groups several items of one extension under its name, so these
 //  read as Nisfeb > Send to Auspex and so on.
@@ -210,6 +211,46 @@ async function today() {
   return { ok: true }
 }
 
+//  The clock's weather, from Open-Meteo for the place set on the day page,
+//  at most every half hour however many tabs ask (Talon's weatherIsStale);
+//  after a failure, five minutes. A try counts whether it worked or not,
+//  and one already running is shared. No place, no request.
+let weatherRun = null
+async function weather() {
+  const { place, weather: w } = await chrome.storage.local.get(['place', 'weather'])
+  if (!place) return { ok: true }
+  const key = placeKey(place)
+  const mine = w && w.key === key ? w : null
+  if (!weatherRun && weatherIsStale(mine ? mine.tried : 0, Date.now(), mine && mine.error ? 5 * 60000 : undefined)) {
+    weatherRun = (async () => {
+      const tried = Date.now()
+      await chrome.storage.local.set({ weather: { ...mine, key, tried } })
+      try {
+        const r = await fetch(requestUrl(place), { signal: AbortSignal.timeout(30000) })
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const sky = parseForecast(await r.text())
+        if (!sky) throw new Error('no weather in the answer')
+        await chrome.storage.local.set({ weather: { key, tried, at: Date.now(), sky, error: '' } })
+      } catch (e) {
+        await chrome.storage.local.set({ weather: { ...mine, key, tried, error: e.message || String(e) } })
+      }
+    })().finally(() => { weatherRun = null })
+  }
+  if (weatherRun) await weatherRun
+  return { ok: true }
+}
+
+//  A typed place, looked up only when the owner asks.
+async function places(q) {
+  try {
+    const r = await fetch(placesUrl(q), { signal: AbortSignal.timeout(30000) })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return { ok: true, places: placesOf(await r.json()) }
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) }
+  }
+}
+
 //  An earlier build filed each page as a note action, which the ship only
 //  listed. Dismiss the ones still open, once, so they leave the inbox.
 async function migrateNotes() {
@@ -300,6 +341,8 @@ const actions = {
   }),
 
   today: () => today(),
+  weather: () => weather(),
+  places: (m) => places(String(m.q || '')),
 
   //  The one request a content script may make: where the ship is.
   linkOrigin: async () => ({ origin: (await state()).origin || '' }),
