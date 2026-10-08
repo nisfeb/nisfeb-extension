@@ -96,7 +96,7 @@ $('daycopy').addEventListener('click', async () => {
   await navigator.clipboard.writeText(DAY)
   say('Copied. Paste it as the home button\'s custom address.')
 })
-$('dayntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/newTab' }))
+$('dayntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/getStarted' }))
 $('dayopen').addEventListener('click', () => chrome.tabs.create({ url: DAY }))
 
 refresh()

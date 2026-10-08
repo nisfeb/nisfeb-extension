@@ -161,7 +161,7 @@ $('reply').addEventListener('submit', async (e) => {
 //  ── wiring ───────────────────────────────────────────────────────────
 
 $('opts').addEventListener('click', () => chrome.runtime.openOptionsPage())
-$('ntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/newTab' }))
+$('ntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/getStarted' }))
 $('brave').hidden = !navigator.brave
 
 chrome.storage.onChanged.addListener((changes, area) => {
