@@ -4,35 +4,44 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Today</title>
+  <script src="theme-boot.js"></script>
   <style>
-    :root { color-scheme: light dark; --amber: #f9a804; --navy: #101541; --bad: #c0392b; --line: #8884; --mention: #9a5800; }
-    @media (prefers-color-scheme: dark) { :root { --mention: var(--amber); --bad: #ff6b5b; } }
-    body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem 1rem 3rem; }
+    /* Talon's built-in palette (Theme.kt), light or dark as the system is.
+       A custom Talon theme or accent sets these inline on <html>. */
+    :root { color-scheme: light; --bg: #ffffff; --text: #1c1917; --muted: #57534e; --raised: #f5f5f4; --outline: #a8a29e; --line: #e7e5e4; --accent: #f59e0b; --on-accent: #1c1917; --error: #dc2626; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --bg: #1a1625; --text: #f5f5f4; --muted: #a8a29e; --raised: #27232f; --outline: #44403c; --line: #292524; --accent: #fbbf24; --error: #f87171; } }
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem 1rem 3rem; background: var(--bg); color: var(--text); }
     header, main, footer { max-width: 64rem; margin: 0 auto; }
     header { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
     h1 { font-size: 1.35rem; margin: 0; font-weight: 600; }
-    #who { opacity: .7; font-size: .9rem; }
+    #who { color: var(--muted); font-size: .9rem; }
     .grow { flex: 1; }
-    .dot { width: .6rem; height: .6rem; border-radius: 50%; background: #999; flex: none; }
-    .dot.ok { background: #2e9e4f; } .dot.bad { background: var(--bad); } .dot.warn { background: var(--amber); }
+    .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--outline); flex: none; }
+    .dot.ok { background: #2e9e4f; } .dot.bad { background: var(--error); } .dot.warn { background: var(--accent); }
     main { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); align-items: start; }
-    section { border: 1px solid var(--line); border-radius: .6rem; padding: .8rem 1rem; min-width: 0; }
-    h2 { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 .5rem; opacity: .75; }
+    section { border: 1px solid var(--line); border-radius: .6rem; padding: .8rem 1rem; min-width: 0; background: var(--bg); }
+    h2 { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 .5rem; color: var(--muted); }
     h2 a { color: inherit; text-decoration: none; }
     h2 a:hover { text-decoration: underline; }
-    h3 { font-size: .85rem; margin: .8rem 0 .3rem; opacity: .75; }
+    h3 { font-size: .85rem; margin: .8rem 0 .3rem; color: var(--muted); }
     ul { list-style: none; margin: 0; padding: 0; }
     li { padding: .2rem 0; overflow-wrap: anywhere; }
     li.past { opacity: .45; }
     p { margin: .3rem 0; }
-    .when, .muted { opacity: .65; font-size: .9em; }
+    .when, .muted { color: var(--muted); font-size: .9em; }
     .when { display: inline-block; min-width: 5.5rem; }
-    .bad { color: var(--bad); }
+    .bad { color: var(--error); }
     .big { font-size: 1.6rem; margin: .2rem 0; }
     a { color: inherit; }
-    button { font: inherit; padding: .3rem .7rem; }
-    input { font: inherit; padding: .35rem; width: 100%; box-sizing: border-box; }
-    footer { margin-top: 2rem; font-size: .85rem; opacity: .7; }
+    button, input { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--outline); border-radius: .4rem; }
+    button { padding: .3rem .7rem; cursor: pointer; }
+    input { padding: .35rem; width: 100%; box-sizing: border-box; }
+    footer { margin-top: 2rem; font-size: .85rem; color: var(--muted); }
+    details { margin-top: 1rem; }
+    summary { cursor: pointer; width: max-content; }
+    .opts { display: grid; gap: .6rem; margin-top: .6rem; max-width: 30rem; }
+    .opts label { display: flex; gap: .5rem; align-items: center; }
+    .opts input[type=checkbox] { width: auto; accent-color: var(--accent); }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -56,9 +65,18 @@
     <section id="money"><h2><a data-app="/apps/armillary/">Armillary</a></h2><div class="body"></div></section>
   </main>
 
-  <footer id="brave" hidden>
-    In Brave this page is the new tab when the new tab page shows your homepage and the homepage is this page (Options says how). Choose Dashboard there to have Brave's own new tab back.
-    <button id="ntp">Brave's new tab settings</button>
+  <footer>
+    <details id="look">
+      <summary>Customize this page</summary>
+      <div class="opts">
+        <label><input type="checkbox" id="talontheme"> Use my Talon theme</label>
+        <p class="muted">Your custom theme and accent in Talon, read from your ship. Off, or with no custom theme in Talon, the page uses Talon's own colours.</p>
+      </div>
+    </details>
+    <p id="brave" hidden>
+      In Brave this page is the new tab when the new tab page shows your homepage and the homepage is this page (Options says how). Choose Dashboard there to have Brave's own new tab back.
+      <button id="ntp">Brave's new tab settings</button>
+    </p>
   </footer>
   <script src="today.js" type="module"></script>
 </body>

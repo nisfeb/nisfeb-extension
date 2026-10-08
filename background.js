@@ -9,6 +9,7 @@ import {
 import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, balanceOf,
 } from './lib/today.js'
+import { lookOf, wantsProfile, profileHex } from './lib/theme.js'
 
 //  Chrome groups several items of one extension under its name, so these
 //  read as Nisfeb > Send to Auspex and so on.
@@ -151,6 +152,22 @@ async function dayCalendar(s, prev) {
   return { zone, zoneAt: known ? prev.zoneAt : now, rows: calRows((await s.calendarWindow(from, to)).rows) }
 }
 
+//  Talon's theme and accent, from %settings, and the profile colour only
+//  when the accent asks for it: scries, no event on the ship. A 404 is a
+//  ship with no Talon settings, the built-in look; any other failure
+//  keeps the look last read. A failed profile read keeps the last colour.
+async function dayLook(s, prev) {
+  let bucket
+  try {
+    bucket = await s.scry('settings', '/bucket/talon/ui-prefs')
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 404)) throw e
+  }
+  const look = lookOf(bucket)
+  if (wantsProfile(look.accent)) look.profile = profileHex(await s.scry('contacts', '/v1/self').catch(() => null)) ?? (prev && prev.profile) ?? null
+  return look
+}
+
 //  A failure as the status needs it: signed out, no answer, or neither.
 const outOf = (e) => (e instanceof ApiError && e.signedOut ? 'signed-out'
   : e instanceof UnreachableError || (e instanceof ApiError && [502, 503, 504].includes(e.status)) ? 'unreachable' : '')
@@ -167,10 +184,14 @@ async function refreshDay(origin, snap) {
     money: async () => balanceOf(await s.account()),
   }
   const keys = Object.keys(jobs)
+  const { talonLook: prevLook } = await chrome.storage.local.get('talonLook')
+  const looked = dayLook(s, prevLook && prevLook.origin === origin ? prevLook : null)
+    .then((look) => chrome.storage.local.set({ talonLook: { origin, at: Date.now(), ...look } }), () => {})
   const got = await Promise.all(keys.map((k) => jobs[k]().then(
     (data) => ({ data }),
     (e) => ({ error: e.message || String(e), out: outOf(e) }),
   )))
+  await looked
   const status = statusOf(got)
   const lastError = (got.find((r) => r.out) || {}).error || ''
   await chrome.storage.local.set({

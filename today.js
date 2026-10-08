@@ -7,11 +7,12 @@
 
 import { explain } from './lib/ship.js'
 import { agenda, money, due } from './lib/today.js'
+import { lookVars, VARS } from './lib/theme.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
 const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
-const KEYS = ['origin', 'ship', 'status', 'today']
+const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme']
 const SHOWN = 12
 
 let st = {}
@@ -84,8 +85,22 @@ function header() {
   $('who').textContent = `${who}${reading ? ' · reading' : at ? ` · read at ${clock(at)}` : ''}`
 }
 
+//  Talon's look for this ship, unless turned off here. Kept in this
+//  page's localStorage too, for theme-boot.js to paint the next tab with
+//  before this module has loaded.
+function look() {
+  const l = st.talonLook && st.talonLook.origin === st.origin ? st.talonLook : null
+  const v = lookVars(l, st.useTalonTheme !== false)
+  const s = document.documentElement.style
+  for (const k of VARS) s.removeProperty(k)
+  for (const [k, x] of Object.entries(v)) s.setProperty(k, x)
+  try { localStorage.dayLook = JSON.stringify(v) } catch { /* no storage: the next tab paints late */ }
+  $('talontheme').checked = st.useTalonTheme !== false
+}
+
 function render() {
   const now = Date.now()
+  look()
   $('date').textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
   header()
   $('none').hidden = Boolean(st.origin)
@@ -112,6 +127,7 @@ async function refresh() {
 $('opts').addEventListener('click', () => chrome.runtime.openOptionsPage())
 $('ntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/getStarted' }))
 $('brave').hidden = !navigator.brave
+$('talontheme').addEventListener('change', () => chrome.storage.local.set({ useTalonTheme: $('talontheme').checked }))
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !KEYS.some((k) => k in changes)) return

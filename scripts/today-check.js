@@ -14,6 +14,8 @@
 //    failures, live  a missing app, a 403, a 502 and a dropped connection,
 //                    one card each, the others drawn
 //    leaving midway  a refresh finishes after the tab closes
+//    Talon's theme   the active custom theme read off %settings and set on
+//                    the page, off when turned off, built-in on a 404
 //
 //    node scripts/today-check.js        (BROWSER names the binary;
 //                                        SHOT=file.png keeps a picture)
@@ -42,6 +44,10 @@ const fixtures = {
     { id: '0v1', subject: 'Dinner on Friday', from: '~sampel-palnet', last: now, unread: true },
     { id: '0v2', subject: 'Read already', from: '~bus', last: now - 1, unread: false },
   ] },
+  '/~/scry/settings/bucket/talon/ui-prefs.json': { bucket: {
+    themes: JSON.stringify({ activeId: 't1', themes: [{ id: 't1', name: 'Night', dark: true, primary: '#7C3AED', secondary: '#0EA5E9', tertiary: '#10B981', background: '#0B0B10', surface: '#14141C' }] }),
+    accent: JSON.stringify({ enabled: false, mode: 'Brand' }),
+  } },
   '/apps/armillary/api/account': { ship: '~zod', balance: 12345678, keys_pending: [{ secret: 'sk-or-SECRET' }], vendor: '~wex', self: '~zod', stale: 3 },
 }
 
@@ -59,6 +65,7 @@ const server = createServer((req, res) => {
   if (mode === 'fail') {
     if (path === '/apps/calendar/config.json') return res.writeHead(404).end('<html>not found</html>')
     if (path.startsWith('/apps/orrery/')) return res.writeHead(403).end('Forbidden')
+    if (path.startsWith('/~/scry/settings/')) return res.writeHead(404).end('<html>no</html>')
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
   }
@@ -74,9 +81,8 @@ const SHIP = `http://127.0.0.1:${server.address().port}`
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const stage = mkdtempSync(join(tmpdir(), 'nisfeb-ext-'))
 const profile = mkdtempSync(join(tmpdir(), 'nisfeb-profile-'))
-for (const f of ['manifest.json', 'background.js', 'content.js', 'popup.html', 'popup.js', 'options.html', 'options.js', 'today.html', 'today.js', 'lib', 'icons']) {
-  cpSync(join(root, f), join(stage, f), { recursive: true })
-}
+//  the extension as the browser loads it: everything but the repo's own
+cpSync(root, stage, { recursive: true, filter: (src) => !/^\/(\.git|node_modules|test|scripts|docs)(\/|$)/.test(src.slice(root.length)) })
 function launch() {
   const browser = spawn(process.env.BROWSER || '/usr/lib/brave-browser/brave', [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -227,6 +233,7 @@ try {
     'GET /apps/calendar/config.json',
     `GET /apps/calendar/window.json?from=${'*'}`,
     'GET /apps/orrery/api/actions?status=open',
+    'GET /~/scry/settings/bucket/talon/ui-prefs.json',
     'GET /apps/auspex/api/inbox?view=inbox&limit=20',
     'GET /apps/armillary/api/account',
   ]
@@ -245,6 +252,15 @@ try {
   await new Promise((r) => setTimeout(r, 1500))
   check('a second tab within five minutes asks nothing', asked.length === before, asked.slice(before).join('\n'))
   check('refresh: no exception in the page', errors.length === 0, errors.join('\n'))
+  const prop = (k) => evaluate(`document.documentElement.style.getPropertyValue('${k}')`, t.sessionId)
+  const lookOn = async () => { for (let i = 0; i < 25 && await prop('--bg') !== '#14141c'; i++) await new Promise((r) => setTimeout(r, 200)); return prop('--bg') }
+  check('theme: Talon\'s active custom theme is on the page', await lookOn() === '#14141c' && await prop('color-scheme') === 'dark', await prop('--bg'))
+  check('theme: kept for the next tab\'s first paint', (await evaluate('localStorage.dayLook', t.sessionId) || '').includes('#14141c'))
+  await evaluate("document.getElementById('talontheme').click()", t.sessionId)
+  await new Promise((r) => setTimeout(r, 500))
+  check('theme: turned off, the built-in colours', await prop('--bg') === '' && JSON.parse(await evaluate('localStorage.dayLook', t.sessionId)).constructor === Object, await prop('--bg'))
+  await evaluate("document.getElementById('talontheme').click()", t.sessionId)
+  check('theme: and back on', await lookOn() === '#14141c')
   if (process.env.SHOT) {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false }, t.sessionId)
     writeFileSync(process.env.SHOT, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
@@ -272,6 +288,8 @@ try {
   check('failures, live: each card says why, the rest drawn', has(t.text, fail).length === 0, `missing: ${has(t.text, fail).join(' | ')}\n${t.text}`)
   check('failures, live: two cards did not answer (502 and a dropped connection)', t.text.split('~zod did not answer').length - 1 === 2, t.text)
   check('failures, live: no HTML from the ship is shown', !/Bad Gateway|<html>/.test(t.text), t.text)
+  await new Promise((r) => setTimeout(r, 500))
+  check('theme: no Talon settings on the ship (404) is the built-in look', await evaluate("document.documentElement.style.getPropertyValue('--bg')", t.sessionId) === '')
   await close(t)
 } finally {
   //  the profile is still being written until the browser has gone

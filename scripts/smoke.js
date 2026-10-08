@@ -38,9 +38,8 @@ const cookie = { name: COOKIE.slice(0, eq), value: COOKIE.slice(eq + 1).split(';
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const stage = mkdtempSync(join(tmpdir(), 'nisfeb-ext-'))
 const profile = mkdtempSync(join(tmpdir(), 'nisfeb-profile-'))
-for (const f of ['manifest.json', 'background.js', 'content.js', 'popup.html', 'popup.js', 'options.html', 'options.js', 'today.html', 'today.js', 'lib', 'icons']) {
-  cpSync(join(root, f), join(stage, f), { recursive: true })
-}
+//  the extension as the browser loads it: everything but the repo's own
+cpSync(root, stage, { recursive: true, filter: (src) => !/^\/(\.git|node_modules|test|scripts|docs)(\/|$)/.test(src.slice(root.length)) })
 function launch() {
   const browser = spawn(process.env.BROWSER || 'brave', [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
