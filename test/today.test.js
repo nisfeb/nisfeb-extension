@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  REFRESH_MS, due, mergeCards, statusOf, spendOf, ordered, moved, CARDS, calRows, okZone, ymd, agenda, calWindow,
+  REFRESH_MS, due, mergeCards, statusOf, spendOf, calRows, okZone, ymd, agenda, calWindow,
   mailOf, actionsOf, balanceOf, money,
 } from '../lib/today.js'
 import { Ship, explain, chatChoices, sendToChat } from '../lib/ship.js'
@@ -260,18 +260,3 @@ test('spendOf: this month\'s spend, nothing yet in a new month, null with no rec
   assert.equal(spendOf(null, now), null)
 })
 
-//  ── the cards' order ────────────────────────────────────────────────
-
-test('ordered: the saved order first, new cards after, gone ones dropped', () => {
-  assert.deepEqual(ordered(null), CARDS)
-  assert.deepEqual(ordered(['mail', 'clock']), ['mail', 'clock', 'cal', 'actions', 'money', 'assistant'])
-  assert.deepEqual(ordered(['chats', 'money', 'money']), ['money', 'clock', 'cal', 'actions', 'mail', 'assistant'])
-})
-
-test('moved: dropped on a card, it takes that card\'s place', () => {
-  const o = ['clock', 'cal', 'actions', 'mail', 'money']
-  assert.deepEqual(moved(o, 'clock', o.indexOf('mail')), ['cal', 'actions', 'mail', 'clock', 'money'], 'forward: after it')
-  assert.deepEqual(moved(o, 'money', o.indexOf('cal')), ['clock', 'money', 'cal', 'actions', 'mail'], 'back: before it')
-  assert.deepEqual(moved(o, 'cal', -3), ['cal', 'clock', 'actions', 'mail', 'money'])
-  assert.deepEqual(moved(o, 'cal', 99), ['clock', 'actions', 'mail', 'money', 'cal'])
-})

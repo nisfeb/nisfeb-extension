@@ -15,6 +15,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
 | `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
 | `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |
+| `lib/layout.js` | The day page's grid, Talon's `HomeLayout.kt`: positions and sizes in columns and rows, clamping, the drop and resize rounding, overlaps, defaults, and packing an old card order. |
 | `lib/history.js` | The hourly browsing digest for orrery: sites, page counts and titles from `chrome.history`, the owner's exclusions, the window it covers. |
 | `lib/calendar.js` | The calendar's write bodies as Talon builds them (`CalendarEdit.kt`: add, edit, delete, skip one occurrence, done), with Talon's tests ported in `test/calendar.test.js`. |
 | `lib/leo.js` | Brave Leo's Bring your own model values from the ship's Armillary lease, or why not (Talon's `BraveLeo.kt`). The key never passes through it, only its last four. |

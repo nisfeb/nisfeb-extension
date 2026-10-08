@@ -19,8 +19,10 @@
 //                    font's file kept once; turned off and light or dark
 //                    chosen in Options; built-in on a 404; Options says
 //                    what was read
-//    arranging       a right-click starts it, a card moved a step and one
-//                    dropped on another, the order kept for a new tab
+//    arranging       on Talon's grid: a right-click starts it, an arrow
+//                    steps a card a square, real drags land a card on any
+//                    square and the corner resizes it, overlaps outlined,
+//                    the layout kept for a new tab, a narrow window stacked
 //    no settings     the page carries none: they are in Options
 //    the search box  Search and Research go to Brave Search's own
 //                    addresses (caught before they leave the machine)
@@ -388,15 +390,16 @@ try {
   await evaluate("document.getElementById('talontheme').click()", o.sessionId)
   check('look: and back on', await until('--bg', '#14141c') === '#14141c')
 
-  //  arranging: a right-click, a step, a drop, kept for a new tab
-  const orderOf = (k, s = t.sessionId) => evaluate(`Number(document.getElementById('${k}').style.order)`, s)
+  //  arranging: a right-click, a card stepped a square, kept for a new tab
+  const posOf = (k, sess = t.sessionId) => evaluate(`(() => { const s = document.getElementById('${k}').style; return s.getPropertyValue('--gc') + ' | ' + s.getPropertyValue('--gr') })()`, sess)
   await evaluate("document.querySelector('#mail .body').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))", t.sessionId)
   check('arranging: a right-click on a card starts it', await evaluate("document.body.classList.contains('arranging') && !document.getElementById('done').hidden", t.sessionId) === true)
-  await evaluate("document.querySelector('#mail .move button').click()", t.sessionId)
-  for (let i = 0; i < 20 && await orderOf('mail') !== 2; i++) await new Promise((r) => setTimeout(r, 100))
-  check('arranging: a card moved a step earlier', await orderOf('mail') === 2 && await orderOf('actions') === 3, `${await orderOf('mail')} ${await orderOf('actions')}`)
+  check('arranging: the cards sit on Talon\'s grid, the default layout', await posOf('mail') === '6 / span 7 | 6 / span 4' && await posOf('clock') === '1 / span 5 | 1 / span 9', await posOf('mail'))
+  await evaluate("document.querySelector('#mail .move button[title=\"Move down\"]').click()", t.sessionId)
+  for (let i = 0; i < 20 && await posOf('mail') !== '6 / span 7 | 7 / span 4'; i++) await new Promise((r) => setTimeout(r, 100))
+  check('arranging: an arrow steps a card one square', await posOf('mail') === '6 / span 7 | 7 / span 4', await posOf('mail'))
   const t3 = await page(['Trip to Lisbon'])
-  check('arranging: the order is kept for a new tab', await orderOf('mail', t3.sessionId) === await orderOf('mail') && await orderOf('mail', t3.sessionId) === 2)
+  check('arranging: the layout is kept for a new tab', await posOf('mail', t3.sessionId) === '6 / span 7 | 7 / span 4')
   await close(t3)
   //  taken off the page, and put back, as on Talon's
   await evaluate("document.querySelector('#mail .move .remove').click()", t.sessionId)
@@ -526,8 +529,12 @@ try {
   const centre = async (k) => JSON.parse(await evaluate(`(() => { const r = document.getElementById('${k}').getBoundingClientRect(); return JSON.stringify([Math.round(r.left + r.width / 2), Math.round(r.top + Math.min(r.height / 2, 60))]) })()`, t.sessionId))
   const mouse = (type, [x, y], button = 'left', extra = {}) => cdp('Input.dispatchMouseEvent', { type, x, y, button, clickCount: 1, ...extra }, t.sessionId)
   const arrangingNow = () => evaluate("document.body.classList.contains('arranging')", t.sessionId)
-  const orderNow = () => evaluate("JSON.stringify([...document.querySelectorAll('[data-card]')].sort((a, b) => a.style.order - b.style.order).map((c) => c.id))", t.sessionId)
-  const before0 = await orderNow()
+  const posNow = async (k) => posOf(k)
+  const allNow = () => evaluate("JSON.stringify([...document.querySelectorAll('[data-card]')].map((c) => c.id + ' ' + c.style.getPropertyValue('--gc') + ' ' + c.style.getPropertyValue('--gr')))", t.sessionId)
+  await evaluate("chrome.storage.local.remove(['dayLayout', 'dayOrder'])", ws1)
+  await new Promise((r) => setTimeout(r, 400))
+  const before0 = await allNow()
+  const pitch = JSON.parse(await evaluate("(() => { const w = document.getElementById('grid').clientWidth; return JSON.stringify({ col: (w - 14 * 11) / 12 + 14, row: 40 }) })()", t.sessionId))
   await mouse('mousePressed', await centre('mail'), 'right')
   await mouse('mouseReleased', await centre('mail'), 'right')
   await new Promise((r) => setTimeout(r, 300))
@@ -537,33 +544,50 @@ try {
     await mouse('mousePressed', a)
     for (let i = 1; i <= 12; i++) await mouse('mouseMoved', [Math.round(a[0] + (b[0] - a[0]) * i / 12), Math.round(a[1] + (b[1] - a[1]) * i / 12)], 'left', { buttons: 1 })
     await mouse('mouseReleased', b)
-    await new Promise((r) => setTimeout(r, 400))
+    await new Promise((r) => setTimeout(r, 500))
   }
+  const by = ([x, y], cols, rows) => [Math.round(x + cols * pitch.col), Math.round(y + rows * pitch.row)]
   //  a click, no move: nothing moves and nothing starts
   await mouse('mousePressed', await centre('cal'))
   await mouse('mouseReleased', await centre('cal'))
   await new Promise((r) => setTimeout(r, 300))
-  check('arranging by hand: a click moves nothing', await orderNow() === before0 && await arrangingNow() === false)
-  //  a press and drag, straight away
-  await drag(await centre('actions'), await centre('clock'))
-  const after0 = JSON.parse(await orderNow())
-  check('arranging by hand: a card pressed and dragged moves, without arranging first', after0.indexOf('actions') < after0.indexOf('clock') && await arrangingNow() === false, JSON.stringify(after0))
+  check('arranging by hand: a click moves nothing', await allNow() === before0 && await arrangingNow() === false)
+  //  a press and drag, straight away, to an empty square
+  const m0 = await centre('money')
+  await drag(m0, by(m0, 7, 0))
+  check('arranging by hand: a card dragged to an empty square lands there, nothing else moves', await posNow('money') === '8 / span 5 | 15 / span 4' && await posNow('cal') === '6 / span 7 | 1 / span 5' && await arrangingNow() === false, await allNow())
   //  a long press, then on into a drag without letting go, as in Talon
-  const p1 = await centre('money')
-  const p2 = await centre('clock')
+  const p1 = await centre('actions')
   await mouse('mousePressed', p1)
   await new Promise((r) => setTimeout(r, 900))
   const held = await arrangingNow()
+  const p2 = by(p1, 0, 5)
   for (let i = 1; i <= 12; i++) await mouse('mouseMoved', [Math.round(p1[0] + (p2[0] - p1[0]) * i / 12), Math.round(p1[1] + (p2[1] - p1[1]) * i / 12)], 'left', { buttons: 1 })
   await mouse('mouseReleased', p2)
-  await new Promise((r) => setTimeout(r, 600))
-  const after1 = await orderNow()
+  await new Promise((r) => setTimeout(r, 500))
   check('arranging by hand: a long press starts it', held === true)
-  check('arranging by hand: held on, the card drags to its place', after1 !== JSON.stringify(after0) && JSON.parse(after1).indexOf('money') < JSON.parse(after1).indexOf('clock'), `${before0} -> ${after1}`)
-  //  arranging already: a plain press and drag
-  await drag(await centre('mail'), await centre('cal'))
-  const after2 = await orderNow()
-  check('arranging by hand: arranging, a press and drag moves a card', after2 !== after1 && JSON.parse(after2).indexOf('mail') < JSON.parse(after2).indexOf('cal'), `${after1} -> ${after2}`)
+  check('arranging by hand: held on, the card drags to its square', await posNow('actions') === '1 / span 5 | 15 / span 5', await allNow())
+  //  the corner grip: narrower and taller
+  const grip = async (k) => JSON.parse(await evaluate(`(() => { const r = document.getElementById('${k}').getBoundingClientRect(); return JSON.stringify([Math.round(r.right - 5), Math.round(r.bottom - 5)]) })()`, t.sessionId))
+  const g0 = await grip('cal')
+  await drag(g0, by(g0, -2, 2))
+  check('arranging by hand: the corner resizes a card, square by square', await posNow('cal') === '6 / span 5 | 1 / span 7', await posNow('cal'))
+  //  a bigger clock card is a bigger dial, and two cards on one square are outlined
+  const dial0 = await evaluate("document.getElementById('dial').clientWidth", t.sessionId)
+  const g1 = await grip('clock')
+  await drag(g1, by(g1, 2, 3))
+  await new Promise((r) => setTimeout(r, 400))
+  const dial1 = await evaluate("document.getElementById('dial').clientWidth", t.sessionId)
+  check('arranging by hand: a bigger clock card draws a bigger dial', await posNow('clock') === '1 / span 7 | 1 / span 12' && dial1 > dial0 + 60, `${dial0} -> ${dial1}`)
+  check('arranging by hand: cards on the same squares are outlined while arranging', await evaluate("document.getElementById('clock').classList.contains('clash') && document.getElementById('cal').classList.contains('clash') && !document.getElementById('actions').classList.contains('clash')", t.sessionId) === true)
+  const t6 = await page(['Trip to Lisbon'])
+  check('arranging by hand: the layout made by hand is kept', await posOf('clock', t6.sessionId) === '1 / span 7 | 1 / span 12' && await posOf('money', t6.sessionId) === '8 / span 5 | 15 / span 4')
+  await close(t6)
+  //  a narrow window: full width, one under another
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 600, height: 900, deviceScaleFactor: 1, mobile: false }, t.sessionId)
+  await new Promise((r) => setTimeout(r, 400))
+  check('arranging by hand: a narrow window stacks the cards full width', await evaluate("(() => { const m = document.getElementById('grid').clientWidth; const c = document.getElementById('cal').getBoundingClientRect().width; return Math.abs(m - c) < 2 })()", t.sessionId) === true)
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false }, t.sessionId)
   await evaluate("document.getElementById('done').click()", t.sessionId)
 
   //  the search box: Brave Search's own addresses, caught before they go
