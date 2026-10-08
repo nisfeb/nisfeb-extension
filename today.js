@@ -329,12 +329,6 @@ $('research').addEventListener('click', (e) => {
   else $('sq').focus()
 })
 
-//  Another card (the priorities) puts words in the box, ready to go.
-function fill(q) {
-  $('sq').value = q
-  $('sq').focus()
-}
-
 //  ── the assistant ────────────────────────────────────────────────────
 //
 //  Talon's Assistant, run by the worker: this draws its history, the
