@@ -98,7 +98,7 @@ const server = createServer((req, res) => {
     if (mode === 'fail') return res.writeHead(404).end('<html>not found</html>')
     return json(res, { caps: [], rows: [
       { id: 'e1', cal: 'default', idx: 0, meta: { name: 'Trip to Lisbon' }, cat: 'allday', kind: 'once', all: true, done: false, l: todayUtc, r: todayUtc + 864e5 },
-      { id: 'e2', cal: 'default', idx: 0, meta: { name: 'Standup' }, cat: 'timed', kind: 'once', all: false, done: false, l: now - 60000, r: now + 60000 },
+      { id: 'e2', cal: 'default', idx: 3, meta: { name: 'Standup' }, cat: 'timed', kind: 'weekly', all: false, done: false, l: now - 60000, r: now + 60000 },
       { id: 't1', cal: 'default', idx: 0, meta: { name: 'Pay the rent' }, cat: 'todo', kind: 'todo', all: true, done: false, l: todayUtc, r: todayUtc + 864e5, priority: 0 },
     ] })
   }
@@ -115,6 +115,12 @@ const server = createServer((req, res) => {
     req.on('end', () => { reads.push(JSON.parse(body)); json(res, { ok: true, id: `r${reads.length}` }) })
     return
   }
+  //  the calendar as the assistant reads it: one event's rule, the tasks
+  if (path === '/apps/calendar/event.json?id=e2') return json(res, { id: 'e2', cal: 'default', cat: 'timed', meta: { name: 'Standup', orrery: 'act-1' }, kind: 'weekly', start_ms: Date.UTC(2026, 8, 7), args: { at: 540, days: ['mon', 'tue', 'wed', 'thu', 'fri'] }, zone: 'none', fin: 'dur', dur_min: 15 })
+  if (path === '/apps/calendar/events.json?cat=todo') return json(res, [
+    { id: 't1', cal: 'default', cat: 'todo', meta: { name: 'Pay the rent' }, due_ms: todayUtc, done: false },
+    { id: 't2', cal: 'default', cat: 'todo', meta: { name: 'Call mum' }, done: false },
+  ])
   if (path === '/apps/armillary/api/inference') return json(res, { base_url: `http://${req.headers.host}/v1`, key: 'test-key', mode: 'lease', models: ['test-model'] })
   if (path === '/apps/orrery/api/brief/last') return json(res, { day: '2026-10-08', at: now, text: 'Dana needs an answer about the lease by Friday.' })
   if (req.method === 'POST' && (path === '/v1/chat/completions' || path.startsWith('/grubbery/api/poke/'))) {
@@ -435,7 +441,7 @@ try {
   check('assistant: a question answered from orrery\'s brief', said2.includes('what should I do today?') && said2.includes('Answer Dana about the lease'), said2)
   const [first, second] = completions
   check('assistant: the model is asked with Talon\'s tools, the key, and NOW', first && first.auth === 'Bearer test-key' && first.body.model === 'test-model' &&
-    first.body.tools.length === 7 && /NOW: \d{4}-\d{2}-\d{2} /.test(first.body.messages[0].content), JSON.stringify(first && first.body).slice(0, 400))
+    first.body.tools.length === 11 && /NOW: \d{4}-\d{2}-\d{2} /.test(first.body.messages[0].content), JSON.stringify(first && first.body).slice(0, 400))
   check('assistant: the brief goes back to the model as the tool\'s answer', second && second.body.messages.some((m) => m.role === 'tool' && m.tool_call_id === 'c1' && m.content.includes('Dana needs an answer')), JSON.stringify(second && second.body.messages).slice(-400))
 
   script.push(call('c2', 'create_event', { name: 'Lunch with Tom', date: '2026-10-10', time: '12:30' }), { role: 'assistant', content: 'Lunch with Tom is on Saturday at 12:30.' })
@@ -452,6 +458,29 @@ try {
   const poke = pokes[0]
   check('assistant: on yes, the calendar\'s add-event poke, then the answer', poke && poke.path === '/grubbery/api/poke/x/calendar.calendar?blot=/json' &&
     poke.body.action === 'add-event' && poke.body.cat === 'timed' && poke.body.start_ms === Date.UTC(2026, 9, 10, 12, 30) && said2.includes('Lunch with Tom is on Saturday'), JSON.stringify(pokes))
+
+  //  one occurrence of a repeating event moved: the one-off, then the skip
+  pokes.length = 0
+  const today0 = localDate(new Date(now))
+  script.push(call('c5', 'update_event', { event: 'e2', occurrence: today0, time: '14:00' }), { role: 'assistant', content: 'Standup is at 14:00 today.' })
+  await askIt('move today\'s standup to 2pm')
+  said2 = await waitTalk('Do it')
+  check('assistant: a change names the event and the one occurrence', said2.includes(`Change "Standup" on ${today0} only:`) && pokes.length === 0, said2)
+  await evaluate("document.getElementById('cyes').click()", t.sessionId)
+  said2 = await waitTalk('at 14:00 today')
+  const [q1, q2] = pokes.map((x) => x.body)
+  check('assistant: one occurrence moved is a one-off added, then the original skipped', q1 && q1.action === 'add-event' && q1.kind === 'once' && q1.start_ms === Date.UTC(...today0.split('-').map((x, i) => Number(x) - (i === 1 ? 1 : 0)), 14, 0) &&
+    q1.meta.orrery === 'act-1' && q2 && q2.action === 'skip-event' && q2.id === 'e2' && q2.idx === 3, JSON.stringify(pokes.map((x) => x.body)))
+
+  //  a task ticked off, found by its words
+  pokes.length = 0
+  script.push(call('c6', 'complete_task', { task: 'rent' }), { role: 'assistant', content: 'Ticked off.' })
+  await askIt('i paid the rent')
+  said2 = await waitTalk('Do it')
+  check('assistant: ticking off names the task', said2.includes('Tick off the task "Pay the rent".'), said2)
+  await evaluate("document.getElementById('cyes').click()", t.sessionId)
+  await waitTalk('Ticked off.')
+  check('assistant: on yes, the calendar\'s done-event for that task', JSON.stringify(pokes.map((x) => x.body)) === JSON.stringify([{ action: 'done-event', id: 't1', done: true }]), JSON.stringify(pokes))
 
   pokes.length = 0
   script.push(call('c3', 'create_task', { name: 'Pay the rent' }), { role: 'assistant', content: 'Fine, I left it off.' })
