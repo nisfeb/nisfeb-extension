@@ -57,7 +57,7 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - A folder-loaded extension runs only with Developer mode on at `brave://extensions`; without it the card says "Turn on developer mode to use this extension, which can't be reviewed by the Web Store" and the extension is off.
 - Brave withholds manifest host permissions from an extension loaded with `--load-extension`. Without the ship's permission, fetches go cross-site with no cookie and every ship call looks signed out. The smoke harness writes the permission into its scratch profile for this reason.
 - A worker that fails to parse does nothing at all, silently: every card and menu dies. `npm test` does not load the worker. Run `npm run today` after any change to it, since that run does.
-- Eyre answers an unauthenticated request on a bound route with a 307 to `/~/login?redirect=<path>`, and with a query string the redirect loops. The client never follows redirects and reads one from a non-login route as signed out.
+- Eyre answers an unauthenticated request on a bound route with a redirect to `/~/login?redirect=<path>`, and with a query string the redirect loops. The client never follows redirects and reads any 3xx from a non-login route as signed out.
 - The worker's devtools target appears before its script has run; poll for `typeof nisfeb` first.
 - Drive headless Brave over the devtools protocol, as both scripts do: `/usr/lib/brave-browser/brave` with a temporary `--user-data-dir`.
 - `chrome_url_overrides.newtab` replaces everyone's new tab with Chromium's plain page and cannot be switched off. Do not add it: the day page becomes the new tab through Brave's own Homepage setting (docs/setup.md).

@@ -25,7 +25,7 @@ Chrome is the same at `chrome://extensions`.
 --load-extension=/home/you/software/personal/nisfeb-extension
 ```
 
-An extension loaded this way still needs Developer mode. Brave also withholds the manifest's host permissions from it, so allow the ship's site when Options asks (step 3).
+An extension loaded this way still needs Developer mode.
 
 ## 3. Connect your ship
 
