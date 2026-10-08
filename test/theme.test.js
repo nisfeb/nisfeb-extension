@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { lerp, css, lum, themeVars, activeOf, accentOf, wantsProfile, profileHex, lookOf, lookVars, lookSaid, fontOf, fontStack, nicknameOf, displayName, BUILT_IN, VARS } from '../lib/theme.js'
+import { lerp, css, lum, themeVars, activeOf, accentOf, wantsProfile, profileHex, lookOf, lookVars, lookSaid, fontOf, fontStack, nicknameOf, ownNickname, displayName, BUILT_IN, VARS } from '../lib/theme.js'
 
 //  Talon's ThemeSettings, as SettingsSyncImpl writes it: the value of
 //  each entry is the JSON as a string.
@@ -98,7 +98,7 @@ test('what Options says was read', () => {
   const at = Date.UTC(2026, 9, 8, 15)
   assert.equal(lookSaid(null), 'Not read from your ship yet.')
   assert.match(lookSaid({ error: 'HTTP 500' }), /could not be read: HTTP 500/)
-  assert.match(lookSaid({ ...lookOf(bucket({ themes: [NIGHT], activeId: 't1' })), at }, '~zod'), /^Talon's theme here is "Night", dark\. Its font is the system's\. Read from ~zod at /)
+  assert.match(lookSaid({ ...lookOf(bucket({ themes: [NIGHT], activeId: 't1' })), at }, '~zod'), /^Talon's theme here is "Night", dark\. Its font is the system's\. No nickname was found on your contact card or in your contact book, so the page greets you by your @p\. Read from ~zod at /)
   assert.match(lookSaid({ ...lookOf(bucket({ themes: [] }, { enabled: true, mode: 'Custom', customHex: '#123456' })), at }), /built-in theme.*, with its accent #123456\./)
 })
 
@@ -137,4 +137,12 @@ test('the owner\'s name, by Talon\'s rules: the nickname, or the @p when Talon s
   const always = lookOf({ bucket: { 'always-patp': JSON.stringify({ enabled: true }) } })
   assert.equal(always.alwaysPatp, true)
   assert.equal(displayName('~zod', { ...always, nickname: 'Zed' }), '~zod')
+  //  the book's page over the card, its own fields winning, as Talon merges them
+  const card = { nickname: { type: 'text', value: 'Published' } }
+  assert.equal(ownNickname(card, [{}, {}]), 'Published', 'not in the book: the card')
+  assert.equal(ownNickname({}, [{ nickname: { type: 'text', value: 'Jackson' } }, {}]), 'Jackson', 'the book\'s copy of the card')
+  assert.equal(ownNickname(card, [{}, { nickname: { type: 'text', value: 'Mine' } }]), 'Mine', 'the book\'s own field wins')
+  assert.equal(ownNickname(null, null), null)
+  assert.match(lookSaid({ at: Date.now(), nickname: 'Jackson' }), /greets you as Jackson\./)
+  assert.match(lookSaid({ at: Date.now(), nickname: null }), /No nickname was found/)
 })

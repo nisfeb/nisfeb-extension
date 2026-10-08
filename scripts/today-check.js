@@ -96,6 +96,8 @@ const fixtures = {
     fonts: JSON.stringify({ family: 'Test', fonts: [{ id: FONT_ID, family: 'Test', weight: 400, italic: false }], removed: [] }),
   } },
   '/~/scry/contacts/v1/self.json': { nickname: { type: 'text', value: 'Zed' }, color: { type: 'tint', value: '0x0' } },
+  //  the owner's own page in their contact book: [con, mod], mod winning
+  '/~/scry/contacts/v1/book/~zod.json': [{}, { nickname: { type: 'text', value: 'Zeddy' } }],
   '/apps/armillary/api/account': { ship: '~zod', balance: 12345678, keys_pending: [{ secret: 'sk-or-SECRET' }], vendor: '~wex', self: '~zod', stale: 3 },
 }
 
@@ -314,8 +316,8 @@ try {
   const prop = (k, s = t.sessionId) => evaluate(`document.documentElement.style.getPropertyValue('${k}')`, s)
   const until = async (k, want, s = t.sessionId) => { for (let i = 0; i < 25 && await prop(k, s) !== want; i++) await new Promise((r) => setTimeout(r, 200)); return prop(k, s) }
   check('look: read at once when the page has none', await until('--bg', '#14141c') === '#14141c' && await prop('color-scheme') === 'dark', await prop('--bg'))
-  check('look: only the look is read, the fresh cards are not', JSON.stringify(asked.sort()) === JSON.stringify(['GET /~/scry/settings/bucket/talon/ui-prefs.json', 'GET /~/scry/contacts/v1/self.json', `GET /grubbery/api/file/talon/fonts/${FONT_ID}.font`].sort()), asked.join('\n'))
-  check('look: the greeting names the owner as Talon does, by nickname', (await textOf(t.sessionId, [', Zed'])).includes(', Zed'))
+  check('look: only the look is read, the fresh cards are not', JSON.stringify(asked.sort()) === JSON.stringify(['GET /~/scry/settings/bucket/talon/ui-prefs.json', 'GET /~/scry/contacts/v1/self.json', 'GET /~/scry/contacts/v1/book/~zod.json', `GET /grubbery/api/file/talon/fonts/${FONT_ID}.font`].sort()), asked.join('\n'))
+  check('look: the greeting names the owner as Talon does, the book\'s nickname over the card\'s', (await textOf(t.sessionId, [', Zeddy'])).includes(', Zeddy'))
   check('look: Talon\'s font is the page\'s', await prop('--font') === '"Test", sans-serif', await prop('--font'))
   check('look: the font\'s file is kept, checked against its name', await evaluate(`caches.open('nisfeb-day').then((c) => c.match('https://day.nisfeb.invalid/fonts/${FONT_ID}')).then(Boolean)`, t.sessionId) === true)
   check('look: kept for the next tab\'s first paint', (await evaluate('localStorage.dayLook', t.sessionId) || '').includes('#14141c'))
@@ -354,6 +356,7 @@ try {
     'GET /apps/orrery/api/generator/last',
     'GET /~/scry/settings/bucket/talon/ui-prefs.json',
     'GET /~/scry/contacts/v1/self.json',
+    'GET /~/scry/contacts/v1/book/~zod.json',
     'GET /apps/auspex/api/inbox?view=inbox&limit=20',
     'GET /apps/armillary/api/account',
   ]
@@ -375,7 +378,7 @@ try {
   //  Talon's look, set in Options and seen on the page
   check('look: on the page after a refresh', await until('--bg', '#14141c') === '#14141c')
   const o = await page(['Light or dark'], 15000, OPTIONS)
-  check('look: Options says what was read', (await textOf(o.sessionId, ['Read from'])).includes('Talon\'s theme here is "Night", dark. Its font is Test. Read from ~zod at'), o.text)
+  check('look: Options says what was read', (await textOf(o.sessionId, ['Read from'])).includes('Talon\'s theme here is "Night", dark. Its font is Test. The page greets you as Zeddy. Read from ~zod at'), o.text)
   await evaluate("document.getElementById('talontheme').click()", o.sessionId)
   check('look: turned off in Options, the built-in colours', await until('--bg', '') === '' && await prop('--font') === '')
   await evaluate("(() => { const m = document.getElementById('mode'); m.value = 'dark'; m.dispatchEvent(new Event('change')) })()", o.sessionId)

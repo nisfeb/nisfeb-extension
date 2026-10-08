@@ -9,7 +9,7 @@ import {
 import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
 } from './lib/today.js'
-import { lookOf, profileHex, nicknameOf, fontOf, CACHE, fontKey } from './lib/theme.js'
+import { lookOf, profileHex, ownNickname, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
 import { digestOf, windowFrom, EVERY_MIN } from './lib/history.js'
 import { leoSetup } from './lib/leo.js'
@@ -174,11 +174,16 @@ async function dayLook(s, prev) {
     if (!(e instanceof ApiError && e.status === 404)) throw e
   }
   const look = lookOf(bucket)
-  //  the owner's own contact: the nickname the greeting uses, and the
-  //  colour a profile accent takes. A failed read keeps the last.
-  const self = await s.scry('contacts', '/v1/self').catch(() => null)
+  //  the owner's own contact: the colour a profile accent takes, and the
+  //  nickname the greeting uses, the book's page laid over the card as
+  //  Talon lays it. A failed read keeps the last.
+  const { ship } = await chrome.storage.local.get('ship')
+  const [self, page] = await Promise.all([
+    s.scry('contacts', '/v1/self').catch(() => null),
+    ship ? s.scry('contacts', `/v1/book/${ship}`).catch(() => null) : null,
+  ])
   look.profile = profileHex(self) ?? (self ? null : prev && prev.profile) ?? null
-  look.nickname = self ? nicknameOf(self) : (prev && prev.nickname) || null
+  look.nickname = self || page ? ownNickname(self, page) : (prev && prev.nickname) || null
   return look
 }
 
