@@ -7,8 +7,10 @@ import {
   localDate, escapeXml, complete, readKey, chatPoke, chatStory, isWhom,
 } from './lib/ship.js'
 import {
-  due, mergeCards, statusOf, unreads, calRows, calWindow, mailOf, actionsOf, balanceOf,
+  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
 } from './lib/today.js'
+import { lookOf, wantsProfile, profileHex } from './lib/theme.js'
+import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
 
 //  Chrome groups several items of one extension under its name, so these
 //  read as Nisfeb > Send to Auspex and so on.
@@ -142,15 +144,6 @@ async function chatList(s, maxAge = 600000) {
 const HOUR = 3600000
 let dayRun = null
 
-//  Unread conversations by name. The names are the chat list's, up to an
-//  hour old; one it does not name sends for a list ten minutes old.
-async function dayChats(s) {
-  const act = await s.activity()
-  let names = await chatList(s, HOUR).catch(() => [])
-  if (unreads(act).some((u) => !names.some((c) => c.whom === u.whom))) names = await chatList(s).catch(() => names)
-  return unreads(act, names)
-}
-
 //  Today and tomorrow in the calendar's zone; the zone is read once a day.
 async function dayCalendar(s, prev) {
   const now = Date.now()
@@ -158,6 +151,22 @@ async function dayCalendar(s, prev) {
   const zone = known ? prev.zone : String((await s.calendarConfig()).zone || '')
   const { from, to } = calWindow(now)
   return { zone, zoneAt: known ? prev.zoneAt : now, rows: calRows((await s.calendarWindow(from, to)).rows) }
+}
+
+//  Talon's theme and accent, from %settings, and the profile colour only
+//  when the accent asks for it: scries, no event on the ship. A 404 is a
+//  ship with no Talon settings, the built-in look; any other failure
+//  keeps the look last read. A failed profile read keeps the last colour.
+async function dayLook(s, prev) {
+  let bucket
+  try {
+    bucket = await s.scry('settings', '/bucket/talon/ui-prefs')
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 404)) throw e
+  }
+  const look = lookOf(bucket)
+  if (wantsProfile(look.accent)) look.profile = profileHex(await s.scry('contacts', '/v1/self').catch(() => null)) ?? (prev && prev.profile) ?? null
+  return look
 }
 
 //  A failure as the status needs it: signed out, no answer, or neither.
@@ -171,16 +180,23 @@ async function refreshDay(origin, snap) {
   const s = new Ship(origin)
   const jobs = {
     cal: () => dayCalendar(s, old.cal && old.cal.data),
-    chats: () => dayChats(s),
-    actions: async () => actionsOf(await s.actions('open')),
+    //  the spend is a line on the card: its failure never fails the card
+    actions: async () => {
+      const [list, last] = await Promise.all([s.actions('open'), s.generatorLast().catch(() => null)])
+      return { list: actionsOf(list), spend: spendOf(last, Date.now()) }
+    },
     mail: async () => mailOf(await s.inbox(20)),
     money: async () => balanceOf(await s.account()),
   }
   const keys = Object.keys(jobs)
+  const { talonLook: prevLook } = await chrome.storage.local.get('talonLook')
+  const looked = dayLook(s, prevLook && prevLook.origin === origin ? prevLook : null)
+    .then((look) => chrome.storage.local.set({ talonLook: { origin, at: Date.now(), ...look } }), () => {})
   const got = await Promise.all(keys.map((k) => jobs[k]().then(
     (data) => ({ data }),
     (e) => ({ error: e.message || String(e), out: outOf(e) }),
   )))
+  await looked
   const status = statusOf(got)
   const lastError = (got.find((r) => r.out) || {}).error || ''
   await chrome.storage.local.set({
@@ -197,6 +213,46 @@ async function today() {
   if (!dayRun && due(snap, origin, Date.now())) dayRun = refreshDay(origin, snap).finally(() => { dayRun = null })
   if (dayRun) await dayRun
   return { ok: true }
+}
+
+//  The clock's weather, from Open-Meteo for the place set on the day page,
+//  at most every half hour however many tabs ask (Talon's weatherIsStale);
+//  after a failure, five minutes. A try counts whether it worked or not,
+//  and one already running is shared. No place, no request.
+let weatherRun = null
+async function weather() {
+  const { place, weather: w } = await chrome.storage.local.get(['place', 'weather'])
+  if (!place) return { ok: true }
+  const key = placeKey(place)
+  const mine = w && w.key === key ? w : null
+  if (!weatherRun && weatherIsStale(mine ? mine.tried : 0, Date.now(), mine && mine.error ? 5 * 60000 : undefined)) {
+    weatherRun = (async () => {
+      const tried = Date.now()
+      await chrome.storage.local.set({ weather: { ...mine, key, tried } })
+      try {
+        const r = await fetch(requestUrl(place), { signal: AbortSignal.timeout(30000) })
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const sky = parseForecast(await r.text())
+        if (!sky) throw new Error('no weather in the answer')
+        await chrome.storage.local.set({ weather: { key, tried, at: Date.now(), sky, error: '' } })
+      } catch (e) {
+        await chrome.storage.local.set({ weather: { ...mine, key, tried, error: e.message || String(e) } })
+      }
+    })().finally(() => { weatherRun = null })
+  }
+  if (weatherRun) await weatherRun
+  return { ok: true }
+}
+
+//  A typed place, looked up only when the owner asks.
+async function places(q) {
+  try {
+    const r = await fetch(placesUrl(q), { signal: AbortSignal.timeout(30000) })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return { ok: true, places: placesOf(await r.json()) }
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) }
+  }
 }
 
 //  An earlier build filed each page as a note action, which the ship only
@@ -289,6 +345,8 @@ const actions = {
   }),
 
   today: () => today(),
+  weather: () => weather(),
+  places: (m) => places(String(m.q || '')),
 
   //  The one request a content script may make: where the ship is.
   linkOrigin: async () => ({ origin: (await state()).origin || '' }),

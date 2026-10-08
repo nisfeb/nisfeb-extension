@@ -38,9 +38,8 @@ const cookie = { name: COOKIE.slice(0, eq), value: COOKIE.slice(eq + 1).split(';
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const stage = mkdtempSync(join(tmpdir(), 'nisfeb-ext-'))
 const profile = mkdtempSync(join(tmpdir(), 'nisfeb-profile-'))
-for (const f of ['manifest.json', 'background.js', 'content.js', 'popup.html', 'popup.js', 'options.html', 'options.js', 'today.html', 'today.js', 'lib', 'icons']) {
-  cpSync(join(root, f), join(stage, f), { recursive: true })
-}
+//  the extension as the browser loads it: everything but the repo's own
+cpSync(root, stage, { recursive: true, filter: (src) => !/^\/(\.git|node_modules|test|scripts|docs)(\/|$)/.test(src.slice(root.length)) })
 function launch() {
   const browser = spawn(process.env.BROWSER || 'brave', [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -195,13 +194,15 @@ await step('chats', async () => {
   const r = await handle({ kind: 'chats' })
   return r.ok && Array.isArray(r.items) ? true : r
 })
-//  The day page's refresh: five reads, each card with data or its reason.
+//  The day page's refresh: four cards, each with data or its reason, and
+//  Talon's look read off %settings.
 await step('today', async () => {
   const r = await handle({ kind: 'today' })
-  const t = await inWorker("chrome.storage.local.get('today').then((s) => s.today)")
-  const cards = (t && t.cards) || {}
+  const t = await inWorker("chrome.storage.local.get(['today', 'talonLook'])")
+  const cards = (t.today && t.today.cards) || {}
   const said = Object.fromEntries(Object.entries(cards).map(([k, c]) => [k, c.error || 'ok']))
-  return r.ok && Object.keys(cards).length === 5 && Object.values(said).every((v) => v === 'ok') ? true : { ok: false, error: JSON.stringify(said) }
+  const ok = r.ok && Object.keys(cards).length === 4 && Object.values(said).every((v) => v === 'ok') && t.talonLook
+  return ok ? true : { ok: false, error: JSON.stringify({ said, look: Boolean(t.talonLook) }) }
 })
 
 await step('bookmark is listed', async () => JSON.parse((await api('/apps/lattice/bookmarks')).body).items.some((i) => i.url === url))

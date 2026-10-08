@@ -13,6 +13,10 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/ship.js` | The ship client (a port of auspex's `thunderbird/lib/api.js`) and the pure helpers the tests pin: poke bodies, chat lists, `explain()` for refusals. |
 | `lib/links.js` | Urbit link detection for the content script. A classic script, since content scripts cannot be modules. |
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
+| `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
+| `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |
+| `sky-dial.js` | Draws the sky clock on a canvas, with its readout as text. |
+| `theme-boot.js` | Paints the last look before the page's module loads. A plain script, since an extension page may run no inline one. |
 | `popup.*`, `options.*`, `today.*` | Extension pages. |
 | `content.js` | The optional clickable-links script, registered from Options, never from the manifest. |
 | `test/*.test.js` | `node --test` unit tests of the pure parts. |
@@ -31,6 +35,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 Every request body and every parser is taken from the source of the app on the other end, and pinned in a test against that shape. Never guess one.
 
 - Tlon chat pokes and scries: Talon (`nisfeb/talon`, `TlonChatRepo.kt`, `WireShapes.kt`, `ChatStory.kt`, `ActivityParser.kt`), which talks to the same ships.
+- The look and the clock: Talon too (`ui/theme/Theme.kt`, `CustomTheme.kt`, `ui/SkyClock.kt`, `Solar.kt`, `Moon.kt`, `OpenMeteoWeather.kt`, `screens/SkyClockPanel.kt`, `HomeScreen.skyFor`). Port its tests with the code (`commonTest/.../ui/*Test.kt`), case for case.
 - auspex, orrery, lattice, calendar, armillary: each app's own `app.hoon` and libraries in its repo under `nisfeb/`.
 - Say in the commit and the test which source file a shape came from.
 
@@ -43,6 +48,7 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - Fall back to an older path only on a 404 or 500. A 502 or a timeout means the ship is down or busy, not that the path is wrong.
 - Never hold a connection open to the ship from here.
 - When a change adds requests, update the README's cost line.
+- The ship is the only party by default. The clock's Open-Meteo requests are the one exception, and only once the owner sets a place. Any other third-party request needs the owner's say and a line in the README saying what leaves.
 
 ## Security
 
@@ -59,6 +65,9 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - A worker that fails to parse does nothing at all, silently: every card and menu dies. `npm test` does not load the worker. Run `npm run today` after any change to it, since that run does.
 - Eyre answers an unauthenticated request on a bound route with a redirect to `/~/login?redirect=<path>`, and with a query string the redirect loops. The client never follows redirects and reads any 3xx from a non-login route as signed out.
 - The worker's devtools target appears before its script has run; poll for `typeof nisfeb` first.
+- The Cache API keys only http(s) URLs. From a `chrome-extension://` page a relative key throws, silently inside an async handler, so the background image is keyed by a name that is never fetched.
+- `innerText` skips the contents of a closed `<details>`. A headless check that reads text there opens it first.
+- `brave --headless --dump-dom` hangs on sneagan's machine (measured 2026-09-25).
 - Drive headless Brave over the devtools protocol, as both scripts do: `/usr/lib/brave-browser/brave` with a temporary `--user-data-dir`.
 - `chrome_url_overrides.newtab` replaces everyone's new tab with Chromium's plain page and cannot be switched off. Do not add it: the day page becomes the new tab through Brave's own Homepage setting (docs/setup.md).
 - Every ship fetch is capped at 60 seconds, so a busy dev ship fails a run on time.

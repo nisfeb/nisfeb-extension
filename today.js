@@ -5,19 +5,20 @@
 //  while it stays in view. Everything shown is built as nodes with text,
 //  never HTML: it is the ship's words, and other people's.
 
-import { explain, isWhom, chatChoices, sendToChat } from './lib/ship.js'
+import { explain } from './lib/ship.js'
 import { agenda, money, due } from './lib/today.js'
+import { lookVars, VARS } from './lib/theme.js'
+import { skyFor, placeKey, coordsOf } from './lib/sky.js'
+import { drawDial } from './sky-dial.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
-const APP = { cal: 'Calendar', chats: 'Tlon', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
-const KEYS = ['origin', 'ship', 'status', 'today', 'lastChats']
+const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
+const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'backgroundAt', 'place', 'weather']
 const SHOWN = 12
 
 let st = {}
 let reading = false
-let unread = []
-let listed = null
 
 function el(tag, props = {}, ...kids) {
   const n = Object.assign(document.createElement(tag), props)
@@ -47,26 +48,18 @@ const draw = {
     ]
   },
 
-  //  Mentions first, then the most recent. A chat a message can go to is
-  //  a button that puts it in the reply box.
-  chats: (list) => {
-    unread = list
-    if (!list.length) return [p('Nothing unread.')]
-    return [el('ul', {}, list.slice(0, SHOWN).map((u) => el('li', {},
-      isWhom(u.whom) ? el('button', { className: 'link', textContent: u.title, onclick: () => pick(u) }) : u.title,
-      el('span', {
-        className: u.mentions ? 'count mention' : 'count',
-        textContent: u.mentions ? `@${u.mentions} · ${u.count}` : String(u.count),
-        title: `${u.count} unread${u.mentions ? `, ${u.mentions} mentioning you` : ''}`,
-      })))), more(list)]
-  },
-
   //  No anchor for one action in orrery's page: each goes to its inbox.
-  actions: (list) => {
-    if (!list.length) return [p('Nothing waiting.')]
+  //  A snapshot from before the spend line is the list alone.
+  actions: (d) => {
+    const list = Array.isArray(d) ? d : d.list
+    const spend = Array.isArray(d) ? null : d.spend
     const inbox = `${st.origin}/apps/orrery/#inbox`
-    return [el('ul', {}, list.slice(0, SHOWN).map((a) => el('li', {},
-      el('a', { href: inbox, textContent: a.title || a.kind }), ' ', el('span', { className: 'muted', textContent: a.status })))), more(list)]
+    return [
+      list.length ? el('ul', {}, list.slice(0, SHOWN).map((a) => el('li', {},
+        el('a', { href: inbox, textContent: a.title || a.kind }), ' ', el('span', { className: 'muted', textContent: a.status })))) : p('Nothing waiting.'),
+      more(list),
+      spend !== null && spend !== undefined && p(`${money(spend)} on its model this month`, 'muted'),
+    ]
   },
 
   mail: (d) => [
@@ -100,8 +93,65 @@ function header() {
   $('who').textContent = `${who}${reading ? ' · reading' : at ? ` · read at ${clock(at)}` : ''}`
 }
 
+//  Talon's look for this ship, unless turned off here. Kept in this
+//  page's localStorage too, for theme-boot.js to paint the next tab with
+//  before this module has loaded.
+function look() {
+  const l = st.talonLook && st.talonLook.origin === st.origin ? st.talonLook : null
+  const v = lookVars(l, st.useTalonTheme !== false)
+  const s = document.documentElement.style
+  for (const k of VARS) s.removeProperty(k)
+  for (const [k, x] of Object.entries(v)) s.setProperty(k, x)
+  try { localStorage.dayLook = JSON.stringify(v) } catch { /* no storage: the next tab paints late */ }
+  $('talontheme').checked = st.useTalonTheme !== false
+}
+
+//  ── the sky clock ────────────────────────────────────────────────────
+//
+//  Talon keeps its clock's units per device; here they follow the
+//  browser's language: 24-hour where its clock is, Fahrenheit where its
+//  region uses it.
+const region = (() => { try { return new Intl.Locale(navigator.language).maximize().region } catch { return '' } })()
+const UNITS = {
+  fahrenheit: ['US', 'LR', 'MM', 'BS', 'BZ', 'KY', 'PW', 'FM', 'MH'].includes(region),
+  twentyFourHour: !/h1[12]/.test(new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle || 'h12'),
+}
+
+function paintClock() {
+  const w = st.weather && st.place && st.weather.key === placeKey(st.place) ? st.weather.sky : null
+  drawDial($('dial'), $('readout'), skyFor(Date.now(), st.place || null, w), UNITS)
+  $('where').textContent = st.place ? st.place.label : 'Set a location'
+  $('nowhere').hidden = Boolean(st.place)
+  $('placeclear').hidden = !st.place
+}
+
+$('where').addEventListener('click', () => { $('look').open = true; $('placeq').focus() })
+
+//  Typed coordinates are taken as they are; anything else is looked up.
+$('placeform').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const q = $('placeq').value
+  const typed = coordsOf(q)
+  if (typed) { await chrome.storage.local.set({ place: typed }); $('places').replaceChildren(); return }
+  if (!q.trim()) return
+  $('places').replaceChildren(p('…', 'muted'))
+  const r = await ask({ kind: 'places', q })
+  if (!r.ok) { $('places').replaceChildren(p(`Open-Meteo did not answer: ${r.error}`, 'bad')); return }
+  $('places').replaceChildren(...(r.places.length ? r.places.map((place) => el('button', {
+    textContent: place.label,
+    onclick: async () => { await chrome.storage.local.set({ place }); $('places').replaceChildren() },
+  })) : [p('No place by that name.', 'muted')]))
+})
+
+$('placeclear').addEventListener('click', () => chrome.storage.local.remove(['place', 'weather']))
+
+//  No place, nothing to ask. The worker decides whether the forecast is due.
+const askWeather = () => { if (st.place) ask({ kind: 'weather' }).catch(() => { /* the worker is reloading: the next view asks again */ }) }
+
 function render() {
   const now = Date.now()
+  look()
+  paintClock()
   $('date').textContent = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(now)
   header()
   $('none').hidden = Boolean(st.origin)
@@ -123,39 +173,49 @@ async function refresh() {
   render()
 }
 
-//  ── the reply box: Send to a chat's picker and send ──────────────────
+//  ── the background: one image, in this browser's Cache Storage ─────
+//
+//  Not storage.local, whose quota (10 MB) a photo can take whole. The
+//  time it changed goes in storage.local, so every open day tab redraws.
+//  ponytail: kept as chosen, not scaled down; scale it if big photos
+//  make the new tab slow to paint.
 
-const say = (text, bad = false) => { $('rout').textContent = text; $('rout').className = bad ? 'out bad' : 'out muted' }
+//  The Cache API keys only http(s) URLs, and a page here is
+//  chrome-extension://, so the key is a name that is never fetched.
+const BG = 'https://day.nisfeb.invalid/background'
+let bgUrl = ''
 
-function pick(u) {
-  $('rwhom').value = u.title
-  $('rtext').focus()
+async function background() {
+  let url = ''
+  try {
+    const hit = await (await caches.open('nisfeb-day')).match(BG)
+    if (hit) url = URL.createObjectURL(await hit.blob())
+  } catch { /* no cache: no picture */ }
+  if (bgUrl) URL.revokeObjectURL(bgUrl)
+  bgUrl = url
+  document.body.style.backgroundImage = url ? `url("${url}")` : ''
+  document.body.classList.toggle('pictured', Boolean(url))
+  $('bgremove').hidden = !url
 }
 
-//  The picker's names, read when the box is first used: the unread chats,
-//  then the ones picked here last, then every chat the ship has.
-$('rwhom').addEventListener('focus', async () => {
-  if (listed) return
-  listed = []
-  const r = await ask({ kind: 'chats' })
-  listed = r.items || []
-  $('rlist').replaceChildren(...[...chatChoices(unread, r.recent || [], listed).keys()].map((t) => el('option', { value: t })))
-  if (!r.ok) say(explain('Tlon', r.error, ship()), true)
+$('bgfile').addEventListener('change', async () => {
+  const f = $('bgfile').files[0]
+  $('bgfile').value = ''
+  if (!f) return
+  if (!f.type.startsWith('image/')) { $('bgsay').textContent = `${f.name} is not an image.`; return }
+  try {
+    await (await caches.open('nisfeb-day')).put(BG, new Response(f, { headers: { 'content-type': f.type } }))
+  } catch (e) {
+    $('bgsay').textContent = `Could not keep it: ${e.message || e}`
+    return
+  }
+  $('bgsay').textContent = 'Kept in this browser only.'
+  await chrome.storage.local.set({ backgroundAt: Date.now() })
 })
 
-$('reply').addEventListener('submit', async (e) => {
-  e.preventDefault()
-  $('rsend').disabled = true
-  say('…')
-  try {
-    const chats = chatChoices(unread, st.lastChats || [], listed || [])
-    const r = await sendToChat(ask, chats, $('rwhom').value, $('rtext').value, st.ship)
-    say(r.ok ? r.text : explain('Tlon', r.text, ship()), !r.ok)
-    if (r.ok) $('rtext').value = ''
-  } catch (err) {
-    say(err.message || String(err), true)
-  }
-  $('rsend').disabled = false
+$('bgremove').addEventListener('click', async () => {
+  await (await caches.open('nisfeb-day')).delete(BG)
+  await chrome.storage.local.set({ backgroundAt: Date.now() })
 })
 
 //  ── wiring ───────────────────────────────────────────────────────────
@@ -163,17 +223,30 @@ $('reply').addEventListener('submit', async (e) => {
 $('opts').addEventListener('click', () => chrome.runtime.openOptionsPage())
 $('ntp').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://settings/getStarted' }))
 $('brave').hidden = !navigator.brave
+$('talontheme').addEventListener('change', () => chrome.storage.local.set({ useTalonTheme: $('talontheme').checked }))
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !KEYS.some((k) => k in changes)) return
   for (const k of KEYS) if (k in changes) st[k] = changes[k].newValue
+  if ('backgroundAt' in changes) background()
+  if ('place' in changes) askWeather()
   render()
 })
 
-const again = () => { if (document.visibilityState === 'visible') { render(); refresh() } }
+const again = () => {
+  if (document.visibilityState !== 'visible') return
+  render()
+  refresh()
+  askWeather()
+}
 document.addEventListener('visibilitychange', again)
 setInterval(again, 15 * 60000)
+//  the clock's minute, and the window's width
+setInterval(() => { if (document.visibilityState === 'visible') paintClock() }, 10000)
+addEventListener('resize', paintClock)
 
 st = await chrome.storage.local.get(KEYS)
 render()
+background()
+askWeather()
 refresh()

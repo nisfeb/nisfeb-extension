@@ -12,11 +12,15 @@
 //    a refresh       each source read once, at its own route; a second
 //                    tab inside five minutes asks nothing
 //    failures, live  a missing app, a 403, a 502 and a dropped connection,
-//                    one card each, the others drawn; /v6 activity falls
-//                    back to /v4 on a 500
-//    the reply box   the poke Send to a chat sends, then "Sent", and a
-//                    refusal in the agent's words
-//    leaving midway  a refresh, and a send, finish after the tab closes
+//                    one card each, the others drawn
+//    leaving midway  a refresh finishes after the tab closes
+//    Talon's theme   the active custom theme read off %settings and set on
+//                    the page, off when turned off, built-in on a 404
+//    the sky clock   drawn with no ship at all, asking for a location and
+//                    fetching no weather without one; a stored forecast
+//                    drawn on it, not fetched again while fresh
+//    a background    an image chosen is behind the page, in a new tab too,
+//                    and gone when removed; a file that is not one is refused
 //
 //    node scripts/today-check.js        (BROWSER names the binary;
 //                                        SHOT=file.png keeps a picture)
@@ -36,41 +40,26 @@ const [y, m, d] = localDate(new Date(now)).split('-').map(Number)
 const todayUtc = Date.UTC(y, m - 1, d)
 const asked = []
 let mode = 'ok'
-let ack = { ok: 'ok' }
 let slow = 0
-const pokes = []
 
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
-  '/~/scry/chat/dm.json': ['~sampel-palnet'],
-  '/~/scry/chat/clubs.json': {},
-  '/~/scry/groups/v3/groups.json': { '~bus/club': { meta: { title: 'Bus Club' }, channels: { 'chat/~bus/general': { meta: { title: 'General' } } } } },
-  '/~/scry/activity/v6/activity/full.json': {
-    'channel/chat/~bus/general': { recency: now, count: 3, 'notify-count': 1, notify: true, unread: { id: '~zod/1', count: 3, notify: true } },
-    'ship/~sampel-palnet': { recency: now - 1000, count: 1, 'notify-count': 0, notify: false, unread: { id: '~sampel-palnet/1', count: 1, notify: false } },
-  },
   '/apps/orrery/api/actions?status=open': [{ id: 'a1', kind: 'call', title: 'Call Dana about the lease', status: 'proposed', by: 'orrery', about: [], history: [] }],
+  '/apps/orrery/api/generator/last': { at: '2026-10-08T00:00:00Z', month: new Date(now).toISOString().slice(0, 7), spend_month_micro: 420000, calls_today: 3 },
   '/apps/auspex/api/inbox?view=inbox&limit=20': { total: 3, offset: 0, limit: 20, view: 'inbox', unread: 2, labels: [], threads: [
     { id: '0v1', subject: 'Dinner on Friday', from: '~sampel-palnet', last: now, unread: true },
     { id: '0v2', subject: 'Read already', from: '~bus', last: now - 1, unread: false },
   ] },
+  '/~/scry/settings/bucket/talon/ui-prefs.json': { bucket: {
+    themes: JSON.stringify({ activeId: 't1', themes: [{ id: 't1', name: 'Night', dark: true, primary: '#7C3AED', secondary: '#0EA5E9', tertiary: '#10B981', background: '#0B0B10', surface: '#14141C' }] }),
+    accent: JSON.stringify({ enabled: false, mode: 'Brand' }),
+  } },
   '/apps/armillary/api/account': { ship: '~zod', balance: 12345678, keys_pending: [{ secret: 'sk-or-SECRET' }], vendor: '~wex', self: '~zod', stale: 3 },
 }
 
 const server = createServer((req, res) => {
   const path = req.url
   asked.push(`${req.method} ${path.replace(/^\/~\/channel\/[^?]+/, '/~/channel/<id>')}`)
-  if (path.startsWith('/~/channel/')) {
-    if (req.method === 'PUT') {
-      let body = ''
-      req.on('data', (c) => { body += c })
-      req.on('end', () => { pokes.push(JSON.parse(body)); res.writeHead(204).end() })
-      return
-    }
-    res.writeHead(200, { 'content-type': 'text/event-stream' })
-    setTimeout(() => res.write(`id: 0\ndata: ${JSON.stringify({ id: 1, response: 'poke', ...ack })}\n\n`), slow)
-    return
-  }
   if (path.startsWith('/apps/calendar/window.json')) {
     if (mode === 'fail') return res.writeHead(404).end('<html>not found</html>')
     return json(res, { caps: [], rows: [
@@ -81,9 +70,8 @@ const server = createServer((req, res) => {
   }
   if (mode === 'fail') {
     if (path === '/apps/calendar/config.json') return res.writeHead(404).end('<html>not found</html>')
-    if (path === '/~/scry/activity/v6/activity/full.json') return res.writeHead(500).end('<html>no</html>')
-    if (path === '/~/scry/activity/v4/activity/full.json') return json(res, fixtures['/~/scry/activity/v6/activity/full.json'])
     if (path.startsWith('/apps/orrery/')) return res.writeHead(403).end('Forbidden')
+    if (path.startsWith('/~/scry/settings/')) return res.writeHead(404).end('<html>no</html>')
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
   }
@@ -99,9 +87,8 @@ const SHIP = `http://127.0.0.1:${server.address().port}`
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const stage = mkdtempSync(join(tmpdir(), 'nisfeb-ext-'))
 const profile = mkdtempSync(join(tmpdir(), 'nisfeb-profile-'))
-for (const f of ['manifest.json', 'background.js', 'content.js', 'popup.html', 'popup.js', 'options.html', 'options.js', 'today.html', 'today.js', 'lib', 'icons']) {
-  cpSync(join(root, f), join(stage, f), { recursive: true })
-}
+//  the extension as the browser loads it: everything but the repo's own
+cpSync(root, stage, { recursive: true, filter: (src) => !/^\/(\.git|node_modules|test|scripts|docs)(\/|$)/.test(src.slice(root.length)) })
 function launch() {
   const browser = spawn(process.env.BROWSER || '/usr/lib/brave-browser/brave', [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -207,19 +194,36 @@ try {
   let t = await page(['No ship yet'])
   check('no ship: says so', t.text.includes('No ship yet. Set one up in Options'), t.text)
   check('no ship: asks nothing', asked.length === 0, asked.join('\n'))
+  check('clock: drawn with no ship, asking for a location', /\d:\d\d/.test(t.text) && t.text.includes('Set a location') && t.text.includes('Without one the dial shows an even day and no weather.'), t.text)
+  const inked = await evaluate(`(() => { const c = document.getElementById('dial'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n })()`, t.sessionId)
+  check('clock: the ring is painted', inked > 5000, inked)
+  check('clock: no place, no weather asked for', await evaluate("chrome.storage.local.get('weather').then((s) => s.weather === undefined)", ws1) === true)
   await close(t)
 
   //  2. a stored snapshot, fresh: drawn at once, nothing asked
   const cards = {
     cal: { at: now, error: '', data: { zone: '', zoneAt: now, rows: [{ name: 'Cached standup', cat: 'timed', all: false, done: false, l: now - 60000, r: now + 60000 }] } },
-    chats: { at: now, error: '', data: [{ whom: 'chat/~bus/general', title: 'Bus Club / General', count: 3, mentions: 1, recency: now }] },
     actions: { at: now, error: '', data: [{ id: 'a1', title: 'Cached action', status: 'approved', kind: 'call' }] },
     mail: { at: now, error: '', data: { unread: 4, threads: [{ subject: 'Cached subject', from: '~bus', last: now }] } },
     money: { at: now, error: '', data: { vendor: '~wex', balance: 2500000 } },
   }
-  await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards } })
-  t = await page(['Cached standup', 'Bus Club / General', 'Cached action', 'Cached subject', '$2.50'])
-  check('cached: every card drawn', has(t.text, ['Cached standup', 'Bus Club / General', '@1 · 3', 'Cached action', '4 unread', 'Cached subject', '$2.50', 'with ~wex']).length === 0, t.text)
+  const forecast = { key: '38.72,-9.13', tried: now, at: now, error: '', sky: {
+    minuteOfDay: 0, sunriseMinute: 360, sunsetMinute: 1080, currentC: 21.4, highC: 24, highAtMinute: 900, lowC: 12, lowAtMinute: 300,
+    cloudCover: 0.7, condition: 'RAIN', hourlyCloud: [], hourlyCondition: [], zoneId: 'Europe/Lisbon', moonElongationDeg: null, dateLabel: '', twilight: 60, polar: false, polarDay: false,
+  } }
+  await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards },
+    place: { lat: 38.72, lon: -9.13, label: 'Lisbon, Portugal', elevationMetres: 45, timeZoneId: 'Europe/Lisbon' }, weather: forecast })
+  t = await page(['Cached standup', 'Cached action', 'Cached subject', '$2.50', 'Rain'])
+  check('clock: the stored forecast is on the dial', has(t.text, ['Lisbon, Portugal', 'Rain']).length === 0 && (t.text.includes('71°') || t.text.includes('21°')) && /H (75|24)°/.test(t.text), t.text)
+  check('clock: with a place, no caption asking for one', !t.text.includes('Without one the dial'))
+  check('clock: nothing but words in the readout', !/null|false|undefined/.test(await evaluate("document.getElementById('readout').innerText", t.sessionId)))
+  if (process.env.SHOT2) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false }, t.sessionId)
+    writeFileSync(process.env.SHOT2, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
+  }
+  await new Promise((r) => setTimeout(r, 1000))
+  check('clock: a fresh forecast is not fetched again', await evaluate("chrome.storage.local.get('weather').then((s) => s.weather.tried)", ws1) === now)
+  check('cached: every card drawn', has(t.text, ['Cached standup', 'Cached action', '4 unread', 'Cached subject', '$2.50', 'with ~wex']).length === 0, t.text)
   check('cached: nothing asked of the ship', asked.length === 0, asked.join('\n'))
   check('cached: no exception in the page', errors.length === 0, errors.join('\n'))
   await close(t)
@@ -227,8 +231,7 @@ try {
   //  3. a snapshot whose cards failed: each says why, the data stays
   const failed = {
     cal: { error: 'HTTP 404' },
-    chats: { ...cards.chats, error: 'signed out' },
-    actions: { error: 'Failed to fetch' },
+    actions: { error: 'signed out' },
     mail: { ...cards.mail, error: 'HTTP 502' },
     money: cards.money,
   }
@@ -237,8 +240,6 @@ try {
   const said = [
     'Calendar is not installed on ~zod.',
     'Signed out of ~zod: connect again in Options.',
-    'Bus Club / General',
-    '~zod did not answer: it may be down or busy.',
     'Cached subject',
     '$2.50',
     '~zod: signed out, connect again in Options',
@@ -248,18 +249,16 @@ try {
 
   //  4. a refresh against the stand-in: every source once, then the cards
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
-  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', 'Bus Club / General', '@1 · 3', '~sampel-palnet', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
+  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', '$0.42 on its model this month', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
   t = await page(live, 30000)
   check('refresh: every card drawn from the ship', has(t.text, live).length === 0, `missing: ${has(t.text, live).join(' | ')}\n${t.text}`)
   check('refresh: the mail page shows only unread subjects', !t.text.includes('Read already'), t.text)
   const once = [
     'GET /apps/calendar/config.json',
     `GET /apps/calendar/window.json?from=${'*'}`,
-    'GET /~/scry/activity/v6/activity/full.json',
-    'GET /~/scry/chat/dm.json',
-    'GET /~/scry/chat/clubs.json',
-    'GET /~/scry/groups/v3/groups.json',
     'GET /apps/orrery/api/actions?status=open',
+    'GET /apps/orrery/api/generator/last',
+    'GET /~/scry/settings/bucket/talon/ui-prefs.json',
     'GET /apps/auspex/api/inbox?view=inbox&limit=20',
     'GET /apps/armillary/api/account',
   ]
@@ -278,39 +277,40 @@ try {
   await new Promise((r) => setTimeout(r, 1500))
   check('a second tab within five minutes asks nothing', asked.length === before, asked.slice(before).join('\n'))
   check('refresh: no exception in the page', errors.length === 0, errors.join('\n'))
+  const prop = (k) => evaluate(`document.documentElement.style.getPropertyValue('${k}')`, t.sessionId)
+  const lookOn = async () => { for (let i = 0; i < 25 && await prop('--bg') !== '#14141c'; i++) await new Promise((r) => setTimeout(r, 200)); return prop('--bg') }
+  check('theme: Talon\'s active custom theme is on the page', await lookOn() === '#14141c' && await prop('color-scheme') === 'dark', await prop('--bg'))
+  check('theme: kept for the next tab\'s first paint', (await evaluate('localStorage.dayLook', t.sessionId) || '').includes('#14141c'))
+  await evaluate("document.getElementById('talontheme').click()", t.sessionId)
+  await new Promise((r) => setTimeout(r, 500))
+  check('theme: turned off, the built-in colours', await prop('--bg') === '' && JSON.parse(await evaluate('localStorage.dayLook', t.sessionId)).constructor === Object, await prop('--bg'))
+  await evaluate("document.getElementById('talontheme').click()", t.sessionId)
+  check('theme: and back on', await lookOn() === '#14141c')
   if (process.env.SHOT) {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false }, t.sessionId)
     writeFileSync(process.env.SHOT, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
   }
 
-  //  6. the reply box: Talon's channel post, then "Sent"
-  pokes.length = 0
-  await evaluate(`document.querySelector('#chats button.link').click(); document.getElementById('rtext').value = 'on my way'; document.getElementById('reply').requestSubmit()`, t.sessionId)
-  let out = await textOf(t.sessionId, ['Sent to Bus Club / General'])
-  check('reply: sent, and said so', out.includes('Sent to Bus Club / General'), out)
-  const [poke, del] = pokes
-  const p0 = poke && poke[0]
-  check('reply: the channel-action-2 poke Send to a chat sends',
-    p0 && p0.action === 'poke' && p0.ship === 'zod' && p0.app === 'channels' && p0.mark === 'channel-action-2' &&
-    p0.json.channel.nest === 'chat/~bus/general' && p0.json.channel.action.post.add.author === '~zod' &&
-    JSON.stringify(p0.json.channel.action.post.add.content) === JSON.stringify([{ inline: ['on my way'] }]), JSON.stringify(pokes))
-  check('reply: the channel is deleted after', JSON.stringify(del) === JSON.stringify([{ id: 2, action: 'delete' }]), JSON.stringify(pokes))
-  ack = { err: 'bad-nest\n/app/channels/hoon' }
-  await evaluate(`document.getElementById('rtext').value = 'again'; document.getElementById('reply').requestSubmit()`, t.sessionId)
-  out = await textOf(t.sessionId, ['refused it'])
-  check('reply: a refusal in the agent\'s words', out.includes('%channels refused it: bad-nest'), out)
-  ack = { ok: 'ok' }
-
-  //  leaving midway: a send whose answer comes after the tab is gone
-  pokes.length = 0
-  slow = 1500
-  await evaluate(`document.getElementById('rtext').value = 'leaving'; document.getElementById('reply').requestSubmit()`, t.sessionId)
-  await new Promise((r) => setTimeout(r, 300))
-  await close(t)
-  await new Promise((r) => setTimeout(r, 2500))
-  check('leaving midway: the send finishes and its channel is deleted', pokes.length === 2 && pokes[1][0].action === 'delete', JSON.stringify(pokes))
-  const recent = await evaluate("chrome.storage.local.get('lastChats').then((s) => JSON.stringify(s.lastChats))", ws1)
-  check('leaving midway: the chat is kept as picked last', recent.includes('chat/~bus/general'), recent)
+  //  a background: chosen, kept for the next tab, removed
+  const choose = (type) => evaluate(`(async () => {
+    const c = new OffscreenCanvas(4, 4); c.getContext('2d').fillRect(0, 0, 4, 4)
+    const blob = '${type}' === 'image/png' ? await c.convertToBlob() : new Blob(['not a picture'], { type: '${type}' })
+    const dt = new DataTransfer(); dt.items.add(new File([blob], 'x', { type: '${type}' }))
+    const input = document.getElementById('bgfile'); input.files = dt.files; input.dispatchEvent(new Event('change'))
+  })()`, t.sessionId)
+  const pictured = (s) => evaluate("document.body.classList.contains('pictured') && document.body.style.backgroundImage.startsWith('url(\"blob:')", s)
+  const settle = async (s, want) => { for (let i = 0; i < 25 && await pictured(s) !== want; i++) await new Promise((r) => setTimeout(r, 200)); return pictured(s) }
+  await choose('text/plain')
+  await evaluate("document.getElementById('look').open = true", t.sessionId)
+  const said1 = await textOf(t.sessionId, ['is not an image'], 3000)
+  check('background: a file that is not an image is refused', said1.includes('x is not an image.') && !await pictured(t.sessionId), said1.slice(-300))
+  await choose('image/png')
+  check('background: the image chosen is behind the page', await settle(t.sessionId, true) === true, await evaluate("document.getElementById('bgsay').textContent", t.sessionId))
+  const t2 = await page(['Trip to Lisbon'])
+  check('background: a new tab has it too', await settle(t2.sessionId, true) === true)
+  await evaluate("document.getElementById('bgremove').click()", t.sessionId)
+  check('background: removed, from every open tab', await settle(t.sessionId, false) === false && await settle(t2.sessionId, false) === false)
+  await close(t2)
 
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
@@ -329,16 +329,17 @@ try {
     'Calendar is not installed on ~zod.',
     'Signed out of ~zod: connect again in Options.',
     '~zod did not answer: it may be down or busy.',
-    'Bus Club / General',
   ]
   t = await page(fail, 30000)
   check('failures, live: each card says why, the rest drawn', has(t.text, fail).length === 0, `missing: ${has(t.text, fail).join(' | ')}\n${t.text}`)
   check('failures, live: two cards did not answer (502 and a dropped connection)', t.text.split('~zod did not answer').length - 1 === 2, t.text)
-  check('failures, live: /v6 activity fell back to /v4 on a 500', asked.includes('GET /~/scry/activity/v4/activity/full.json'), asked.join('\n'))
   check('failures, live: no HTML from the ship is shown', !/Bad Gateway|<html>/.test(t.text), t.text)
+  await new Promise((r) => setTimeout(r, 500))
+  check('theme: no Talon settings on the ship (404) is the built-in look', await evaluate("document.documentElement.style.getPropertyValue('--bg')", t.sessionId) === '')
   await close(t)
 } finally {
-  browser.kill()
+  //  the profile is still being written until the browser has gone
+  await new Promise((r) => { browser.once('exit', r); browser.kill(); setTimeout(r, 5000) })
   server.close()
   rmSync(stage, { recursive: true, force: true })
   rmSync(profile, { recursive: true, force: true })

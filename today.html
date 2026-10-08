@@ -4,41 +4,66 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Today</title>
+  <script src="theme-boot.js"></script>
   <style>
-    :root { color-scheme: light dark; --amber: #f9a804; --navy: #101541; --bad: #c0392b; --line: #8884; --mention: #9a5800; }
-    @media (prefers-color-scheme: dark) { :root { --mention: var(--amber); --bad: #ff6b5b; } }
-    body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem 1rem 3rem; }
+    /* Talon's built-in palette (Theme.kt), light or dark as the system is.
+       A custom Talon theme or accent sets these inline on <html>. */
+    :root { color-scheme: light; --bg: #ffffff; --text: #1c1917; --muted: #57534e; --raised: #f5f5f4; --outline: #a8a29e; --line: #e7e5e4; --accent: #f59e0b; --on-accent: #1c1917; --error: #dc2626; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --bg: #1a1625; --text: #f5f5f4; --muted: #a8a29e; --raised: #27232f; --outline: #44403c; --line: #292524; --accent: #fbbf24; --error: #f87171; } }
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 1.5rem 1rem 3rem; background: var(--bg); color: var(--text); }
     header, main, footer { max-width: 64rem; margin: 0 auto; }
     header { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
     h1 { font-size: 1.35rem; margin: 0; font-weight: 600; }
-    #who { opacity: .7; font-size: .9rem; }
+    #who { color: var(--muted); font-size: .9rem; }
     .grow { flex: 1; }
-    .dot { width: .6rem; height: .6rem; border-radius: 50%; background: #999; flex: none; }
-    .dot.ok { background: #2e9e4f; } .dot.bad { background: var(--bad); } .dot.warn { background: var(--amber); }
+    .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--outline); flex: none; }
+    .dot.ok { background: #2e9e4f; } .dot.bad { background: var(--error); } .dot.warn { background: var(--accent); }
     main { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); align-items: start; }
-    section { border: 1px solid var(--line); border-radius: .6rem; padding: .8rem 1rem; min-width: 0; }
-    h2 { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 .5rem; opacity: .75; }
+    section { border: 1px solid var(--line); border-radius: .6rem; padding: .8rem 1rem; min-width: 0; background: var(--bg); }
+    h2 { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 .5rem; color: var(--muted); }
     h2 a { color: inherit; text-decoration: none; }
     h2 a:hover { text-decoration: underline; }
-    h3 { font-size: .85rem; margin: .8rem 0 .3rem; opacity: .75; }
+    h3 { font-size: .85rem; margin: .8rem 0 .3rem; color: var(--muted); }
     ul { list-style: none; margin: 0; padding: 0; }
     li { padding: .2rem 0; overflow-wrap: anywhere; }
     li.past { opacity: .45; }
     p { margin: .3rem 0; }
-    .when, .muted { opacity: .65; font-size: .9em; }
+    .when, .muted { color: var(--muted); font-size: .9em; }
     .when { display: inline-block; min-width: 5.5rem; }
-    .count { float: right; font-size: .85em; opacity: .75; }
-    .count.mention { color: var(--mention); opacity: 1; font-weight: 600; }
-    .bad { color: var(--bad); }
+    .bad { color: var(--error); }
     .big { font-size: 1.6rem; margin: .2rem 0; }
     a { color: inherit; }
-    button { font: inherit; padding: .3rem .7rem; }
-    button.link { background: none; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; }
-    form { margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--line); display: grid; gap: .4rem; }
-    input { font: inherit; padding: .35rem; width: 100%; box-sizing: border-box; }
-    form .row { display: flex; gap: .4rem; } form .row input { flex: 1; min-width: 0; }
-    button.primary { background: var(--amber); color: var(--navy); border: 0; font-weight: 600; }
-    footer { margin-top: 2rem; font-size: .85rem; opacity: .7; }
+    button, input { font: inherit; color: var(--text); background: var(--raised); border: 1px solid var(--outline); border-radius: .4rem; }
+    button { padding: .3rem .7rem; cursor: pointer; }
+    input { padding: .35rem; width: 100%; box-sizing: border-box; }
+    footer { margin-top: 2rem; font-size: .85rem; color: var(--muted); }
+    /* a picture behind the page: the cards and the header stay legible on it */
+    body { background-position: center; background-size: cover; background-attachment: fixed; background-repeat: no-repeat; }
+    body.pictured section, body.pictured header, body.pictured footer { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(8px); }
+    body.pictured header, body.pictured footer { border-radius: .6rem; padding: .5rem .8rem; }
+    /* the sky clock, as Talon's home page draws it: a panel of its own */
+    .clock { width: max-content; max-width: 100%; margin: 0 auto 1.25rem; padding: 6px 12px; border-radius: 10px; background: color-mix(in srgb, var(--raised) 30%, transparent); display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
+    body.pictured .clock { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(8px); }
+    .dial { position: relative; width: min(320px, calc(100vw - 4rem)); aspect-ratio: 1; }
+    .dial canvas { width: 100%; height: 100%; display: block; }
+    .readout { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); pointer-events: none; line-height: 1.3; }
+    .readout .time { color: var(--text); font-weight: 500; white-space: nowrap; }
+    .readout .date { font-size: 14px; }
+    .readout .cond { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: 2px; }
+    .readout .cond svg { width: 14px; height: 14px; }
+    .readout .temp { color: var(--text); font-size: 24px; margin-top: 6px; }
+    .readout .hilo { display: flex; gap: 10px; font-size: 12px; }
+    .readout .hilo .at { font-size: 11px; }
+    .clock button.where { background: none; border: 0; color: var(--accent); font-size: 11px; padding: 2px 12px; }
+    .clock p { font-size: 11px; color: var(--muted); margin: 0 24px 4px; text-align: center; }
+    .places { display: grid; gap: .3rem; }
+    .places button { text-align: left; }
+    form.row { display: flex; gap: .4rem; } form.row input { flex: 1; min-width: 0; }
+    details { margin-top: 1rem; }
+    summary { cursor: pointer; width: max-content; }
+    .opts { display: grid; gap: .6rem; margin-top: .6rem; max-width: 30rem; }
+    .opts label { display: flex; gap: .5rem; align-items: center; }
+    .opts input[type=checkbox] { width: auto; accent-color: var(--accent); }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -51,33 +76,45 @@
     <button id="opts">Options</button>
   </header>
 
+  <div class="clock" id="clock">
+    <div class="dial"><canvas id="dial" role="img"></canvas><div class="readout" id="readout"></div></div>
+    <button class="where" id="where">Set a location</button>
+    <p id="nowhere">Without one the dial shows an even day and no weather.</p>
+  </div>
+
   <main id="none" hidden>
     <section><p>No ship yet. Set one up in Options and this page shows your day from it.</p></section>
   </main>
 
   <main id="cards" hidden>
     <section id="cal"><h2><a data-app="/apps/calendar/">Today</a></h2><div class="body"></div></section>
-    <section id="chats">
-      <h2><a data-app="/apps/groups/">Unread chats</a></h2>
-      <div class="body"></div>
-      <form id="reply" autocomplete="off">
-        <input id="rwhom" list="rlist" placeholder="Reply in: a chat's name, or a ship" aria-label="Chat">
-        <datalist id="rlist"></datalist>
-        <div class="row">
-          <input id="rtext" placeholder="Message" aria-label="Message">
-          <button class="primary" id="rsend">Send</button>
-        </div>
-        <p class="out muted" id="rout"></p>
-      </form>
-    </section>
     <section id="actions"><h2><a data-app="/apps/orrery/#inbox">Orrery</a></h2><div class="body"></div></section>
     <section id="mail"><h2><a data-app="/apps/auspex/">Mail</a></h2><div class="body"></div></section>
     <section id="money"><h2><a data-app="/apps/armillary/">Armillary</a></h2><div class="body"></div></section>
   </main>
 
-  <footer id="brave" hidden>
-    In Brave this page is the new tab when the new tab page shows your homepage and the homepage is this page (Options says how). Choose Dashboard there to have Brave's own new tab back.
-    <button id="ntp">Brave's new tab settings</button>
+  <footer>
+    <details id="look">
+      <summary>Customize this page</summary>
+      <div class="opts">
+        <label><input type="checkbox" id="talontheme"> Use my Talon theme</label>
+        <p class="muted">Your custom theme and accent in Talon, read from your ship. Off, or with no custom theme in Talon, the page uses Talon's own colours.</p>
+        <label for="placeq">Location for the clock</label>
+        <form class="row" id="placeform" autocomplete="off">
+          <input id="placeq" placeholder="A town, a postcode, or 51.5, -0.13">
+          <button>Find</button>
+        </form>
+        <div class="places" id="places"></div>
+        <p class="muted">Finding a place sends what you type to Open-Meteo, unless it is coordinates. Once a place is set, the clock asks Open-Meteo for its weather every half hour, with the position rounded to about a kilometre. With no place, nothing is sent.</p>
+        <p><button id="placeclear" hidden>Forget the location</button></p>
+        <label>Background image <input type="file" id="bgfile" accept="image/*"></label>
+        <p><button id="bgremove" hidden>Remove the background</button> <span class="muted" id="bgsay">Kept in this browser only.</span></p>
+      </div>
+    </details>
+    <p id="brave" hidden>
+      In Brave this page is the new tab when the new tab page shows your homepage and the homepage is this page (Options says how). Choose Dashboard there to have Brave's own new tab back.
+      <button id="ntp">Brave's new tab settings</button>
+    </p>
   </footer>
   <script src="today.js" type="module"></script>
 </body>

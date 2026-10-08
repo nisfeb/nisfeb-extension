@@ -37,7 +37,13 @@ The code is sent once to the ship's own login form and never stored. The browser
 
 ## 4. Open your day
 
-Click the nisfeb button, then **Today**. The page shows today's events, unread chats with mentions first, orrery's open actions, unread mail and your Armillary balance, with a reply box under the chats. A card for an app your ship does not have says so, and the others still show.
+Click the nisfeb button, then **Today**. The page shows Talon's sky clock, then today's events, Orrery's open actions and its spend this month, unread mail and your Armillary balance. A card for an app your ship does not have says so, and the others still show. The page wears your Talon theme if you have a custom one.
+
+Under **Customize this page**, at the bottom:
+
+- **Location for the clock.** Type a town or postcode and press **Find**, then pick it from the list. Coordinates such as `51.5, -0.13` are taken as they are. Without a place the clock shows an even day and no weather. With one, it asks Open-Meteo for that place's weather every half hour, with the position rounded to about a kilometre.
+- **Background image.** Choose an image file. It stays in this browser only. **Remove the background** takes it away.
+- **Use my Talon theme.** On by default. Off, the page uses Talon's own colours.
 
 ## 5. Make it your new tab (Brave)
 
@@ -73,4 +79,5 @@ Then press the reload arrow (↻) on the nisfeb card at `brave://extensions`, so
 | One card says its app is not installed | Your ship does not run that app (or an older version) | Install or update the app on the ship, or ignore the card |
 | A card says the ship did not answer | The ship is down, busy or unreachable | Wait and reopen. The card keeps what it last showed |
 | Nothing at all works, and the popup does not respond | The background worker failed to load | `brave://extensions`, the nisfeb card, **Errors**; then the reload arrow |
+| The clock shows no weather | No place is set, or Open-Meteo did not answer | Set a place under **Customize this page**; a failed fetch is tried again after five minutes |
 | Ctrl+T still opens Brave's dashboard | The new tab is not set to Homepage, or the home button has no custom address | Repeat step 5 |
