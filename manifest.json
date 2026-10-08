@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Your Urbit ship from any page: mail it with Auspex, note it in Orrery, keep it in Lattice, put it on the Calendar, ask Armillary.",
   "author": "nisfeb",
-  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "notifications"],
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "notifications", "alarms"],
+  "optional_permissions": ["history"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": {

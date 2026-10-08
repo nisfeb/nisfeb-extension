@@ -22,6 +22,11 @@
 //    arranging       a right-click starts it, a card moved a step and one
 //                    dropped on another, the order kept for a new tab
 //    no settings     the page carries none: they are in Options
+//    the search box  Search and Research go to Brave Search's own
+//                    addresses (caught before they leave the machine)
+//    history         pages really visited go to orrery's read channel as
+//                    a digest of sites and titles, a listed site and the
+//                    ship's own pages left out, once the owner turns it on
 //    the assistant   a question answered from orrery's brief by a model
 //                    that asked for it; a write shown and run only on
 //                    yes, with the calendar's poke; a no said to the model;
@@ -61,6 +66,14 @@ const pokes = []
 const FONT = Buffer.from('not really a font, but its own hash')
 const FONT_ID = createHash('sha256').update(FONT).digest('hex')
 
+//  pages to visit for the history digest, on two other hosts
+const sites = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html' })
+  .end(`<!doctype html><title>${req.url === '/a' ? 'Flights to Lisbon' : req.url === '/b' ? 'Lisbon hotels' : 'Secret page'}</title><p>body text never sent`))
+await new Promise((r) => sites.listen(0, '0.0.0.0', r))
+const SITE = `http://127.0.0.2:${sites.address().port}`
+const SECRET = `http://localhost:${sites.address().port}`
+const reads = []
+
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
   '/apps/orrery/api/actions?status=open': [{ id: 'a1', kind: 'call', title: 'Call Dana about the lease', status: 'proposed', by: 'orrery', about: [], history: [] }],
@@ -95,6 +108,12 @@ const server = createServer((req, res) => {
     if (path.startsWith('/~/scry/settings/')) return res.writeHead(404).end('<html>no</html>')
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
+  }
+  if (req.method === 'POST' && path === '/apps/orrery/api/read') {
+    let body = ''
+    req.on('data', (c) => { body += c })
+    req.on('end', () => { reads.push(JSON.parse(body)); json(res, { ok: true, id: `r${reads.length}` }) })
+    return
   }
   if (path === '/apps/armillary/api/inference') return json(res, { base_url: `http://${req.headers.host}/v1`, key: 'test-key', mode: 'lease', models: ['test-model'] })
   if (path === '/apps/orrery/api/brief/last') return json(res, { day: '2026-10-08', at: now, text: 'Dana needs an answer about the lease by Friday.' })
@@ -150,7 +169,7 @@ function launch() {
   const settings = prefs.extensions.settings
   const e = settings[Object.keys(settings).find((k) => settings[k].path === stage)]
   for (const k of ['active_permissions', 'granted_permissions', 'runtime_granted_permissions']) {
-    e[k] = { ...(e[k] || {}), api: (e[k] && e[k].api) || [], explicit_host: [patternFor(SHIP)], manifest_permissions: [], scriptable_host: [] }
+    e[k] = { ...(e[k] || {}), api: [...new Set([...((e[k] && e[k].api) || []), 'history'])], explicit_host: [patternFor(SHIP)], manifest_permissions: [], scriptable_host: [] }
   }
   delete e.withholding_permissions
   writeFileSync(pf, JSON.stringify(prefs))
@@ -161,8 +180,14 @@ await new Promise((r, j) => { ws.onopen = r; ws.onerror = j })
 let seq = 0
 const waiting = new Map()
 const errors = []
+const caught = []
 ws.onmessage = (ev) => {
   const msg = JSON.parse(ev.data)
+  //  a navigation to Brave Search, caught and stopped here
+  if (msg.method === 'Fetch.requestPaused') {
+    caught.push(msg.params.request.url)
+    ws.send(JSON.stringify({ id: ++seq, method: 'Fetch.failRequest', params: { requestId: msg.params.requestId, errorReason: 'Aborted' }, sessionId: msg.sessionId }))
+  }
   if (msg.method === 'Runtime.exceptionThrown') errors.push(msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text)
   if (!msg.id || !waiting.has(msg.id)) return
   const { r, j } = waiting.get(msg.id)
@@ -193,6 +218,7 @@ for (let i = 0; i < 50; i++) {
   if (await evaluate('typeof nisfeb', ws1).catch(() => '') === 'object') break
   await new Promise((r) => setTimeout(r, 100))
 }
+const handle = (msg) => evaluate(`nisfeb.handle(${JSON.stringify(msg)})`, ws1)
 const store = (obj) => evaluate(`chrome.storage.session.clear().then(() => chrome.storage.local.clear()).then(() => chrome.storage.local.set(${JSON.stringify(obj)}))`, ws1)
 const PAGE = `chrome-extension://${new URL(worker.url).host}/today.html`
 
@@ -499,6 +525,40 @@ try {
   check('arranging by hand: arranging, a press and drag moves a card', after2 !== after1 && JSON.parse(after2).indexOf('mail') < JSON.parse(after2).indexOf('cal'), `${after1} -> ${after2}`)
   await evaluate("document.getElementById('done').click()", t.sessionId)
 
+  //  the search box: Brave Search's own addresses, caught before they go
+  const s1 = await page(['Search'])
+  await cdp('Fetch.enable', { patterns: [{ urlPattern: 'https://search.brave.com/*' }] }, s1.sessionId)
+  await evaluate("document.getElementById('sq').value = 'lisbon flights'; document.getElementById('searchform').requestSubmit()", s1.sessionId)
+  for (let i = 0; i < 25 && !caught.length; i++) await new Promise((r) => setTimeout(r, 200))
+  check('search: Enter goes to Brave Search', caught[0] === 'https://search.brave.com/search?q=lisbon%20flights', caught.join(' '))
+  await close(s1)
+  const s2 = await page(['Search'])
+  await cdp('Fetch.enable', { patterns: [{ urlPattern: 'https://search.brave.com/*' }] }, s2.sessionId)
+  await evaluate("document.getElementById('sq').value = 'history of urbit'; document.getElementById('research').click()", s2.sessionId)
+  for (let i = 0; i < 25 && caught.length < 2; i++) await new Promise((r) => setTimeout(r, 200))
+  check('search: Research starts Ask Brave\'s Deep Research', caught[1] === 'https://search.brave.com/ask?q=history%20of%20urbit&enable_research=true', caught.join(' '))
+  await close(s2)
+
+  //  history into orrery: real visits, a digest, a listed site left out
+  for (const u of [`${SITE}/a`, `${SITE}/b`, `${SECRET}/c`]) {
+    const v = await cdp('Target.createTarget', { url: u })
+    await new Promise((r) => setTimeout(r, 700))
+    await cdp('Target.closeTarget', { targetId: v.targetId })
+  }
+  const off = await handle({ kind: 'historyNow' })
+  check('history: nothing is sent while it is off', off.ok === false && reads.length === 0, JSON.stringify(off))
+  await evaluate("chrome.storage.local.set({ historyDigest: { on: true, exclude: ['localhost'] } })", ws1)
+  const sentNow = await handle({ kind: 'historyNow' })
+  const r0 = reads[0]
+  check('history: turned on, a digest goes to orrery\'s read channel', sentNow.ok && sentNow.sites === 1 && r0 && r0.source.kind === 'browser' && /^Browsing, /.test(r0.title), JSON.stringify(sentNow) + JSON.stringify(r0))
+  check('history: sites, page counts and titles, and nothing else', r0 && r0.text.includes('- 127.0.0.2, 2 pages: ') && r0.text.includes('"Flights to Lisbon"') && r0.text.includes('"Lisbon hotels"') &&
+    !r0.text.includes('Secret page') && !r0.text.includes('body text') && !r0.text.includes('127.0.0.1'), r0 && r0.text)
+  const o2 = await page(['Browsing history into Orrery'], 15000, OPTIONS)
+  check('history: Options says what was sent', (await textOf(o2.sessionId, ['Last sent'])).includes('1 site'), o2.text.slice(-400))
+  await close(o2)
+  const again2 = await handle({ kind: 'historyNow' })
+  check('history: the next digest starts where the last ended', again2.ok && again2.sites === 0 && reads.length === 1, JSON.stringify(again2))
+
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
   t = await page(['Reading'], 3000)
@@ -528,6 +588,7 @@ try {
   //  the profile is still being written until the browser has gone
   await new Promise((r) => { browser.once('exit', r); browser.kill(); setTimeout(r, 5000) })
   server.close()
+  sites.close()
   rmSync(stage, { recursive: true, force: true })
   rmSync(profile, { recursive: true, force: true })
 }

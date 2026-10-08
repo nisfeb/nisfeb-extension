@@ -11,6 +11,7 @@ import {
 } from './lib/today.js'
 import { lookOf, profileHex, nicknameOf, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
+import { digestOf, windowFrom, EVERY_MIN } from './lib/history.js'
 import {
   MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, eventOf, eventLines, windowOf, addDays,
   foundLines, bodyLines, instructedText, instructRefusal, clip, messagesFor,
@@ -30,6 +31,7 @@ const MENUS = [
 ]
 
 chrome.runtime.onInstalled.addListener(() => {
+  historySchedule()
   chrome.contextMenus.removeAll(() => {
     for (const [id, title, contexts] of MENUS) chrome.contextMenus.create({ id, title, contexts })
   })
@@ -302,6 +304,57 @@ async function places(q) {
   }
 }
 
+//  ── browsing history into orrery ──────────────────────────────────────
+//
+//  Off until the owner turns it on in Options, which asks the browser for
+//  its history under that click. Then, every hour, the sites visited since
+//  the last digest, how many pages of each and their titles go to orrery's
+//  read channel, under the Orrery key when one is set (as Read in Orrery
+//  sends a page). Never a page's text, never the ship's own pages, never a
+//  site the owner listed. The end of the last digest sent is kept, so an
+//  hour missed is in the next one (six hours at most).
+
+const HISTORY_ALARM = 'history'
+
+async function historySchedule() {
+  const { historyDigest: h } = await chrome.storage.local.get('historyDigest')
+  if (h && h.on) chrome.alarms.create(HISTORY_ALARM, { periodInMinutes: EVERY_MIN, delayInMinutes: EVERY_MIN })
+  else await chrome.alarms.clear(HISTORY_ALARM)
+}
+
+let historyRun = null
+async function sendHistory() {
+  const { historyDigest: h = {}, historySent: last = {}, origin, orreryKey = '' } = await chrome.storage.local.get(['historyDigest', 'historySent', 'origin', 'orreryKey'])
+  if (!h.on) return { ok: false, error: 'the digest is off' }
+  if (!origin) return { ok: false, error: 'no ship yet: set one up in Options' }
+  if (!(await chrome.permissions.contains({ permissions: ['history'] }))) return { ok: false, error: 'the browser has not given the extension its history' }
+  const to = Date.now()
+  const from = windowFrom(last.to, to)
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const items = await chrome.history.search({ text: '', startTime: from, endTime: to, maxResults: 5000 })
+  const d = digestOf(items, { from, to, exclude: h.exclude || [], skip: [new URL(origin).hostname.replace(/^www\./, '')], zone })
+  try {
+    if (d.text) {
+      const hm = (ms) => new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(ms)
+      const r = await new Ship(origin).read({ text: d.text, title: `Browsing, ${hm(from)} to ${hm(to)}`, url: `history/${from}-${to}`, key: orreryKey, kind: 'browser' })
+      await chrome.storage.local.set({ historySent: { to, at: Date.now(), sites: d.sites, dropped: r.dropped || '', error: '' } })
+      return { ok: true, sites: d.sites, dropped: r.dropped || '' }
+    }
+    await chrome.storage.local.set({ historySent: { to, at: Date.now(), sites: 0, dropped: '', error: '' } })
+    return { ok: true, sites: 0 }
+  } catch (e) {
+    //  the window stays open, so the next digest carries this hour too
+    await chrome.storage.local.set({ historySent: { ...last, error: e.message || String(e), tried: Date.now() } })
+    return { ok: false, error: e.message || String(e) }
+  }
+}
+
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === HISTORY_ALARM && !historyRun) historyRun = sendHistory().catch(() => {}).finally(() => { historyRun = null })
+})
+chrome.runtime.onStartup.addListener(() => { historySchedule() })
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && 'historyDigest' in changes) historySchedule() })
+
 //  ── the day page's assistant ─────────────────────────────────────────
 //
 //  Talon's AgentLoop, run here: the model (Armillary's, as Ask uses it)
@@ -541,6 +594,11 @@ const actions = {
   }),
 
   today: () => today(),
+  historyNow: async () => {
+    if (historyRun) return { ok: false, error: 'a digest is being sent' }
+    historyRun = sendHistory().finally(() => { historyRun = null })
+    return historyRun
+  },
   assist: (m) => assist(String(m.text || '')),
   assistAnswer: (m) => assistAnswer(m.yes === true),
   assistReset: async () => {

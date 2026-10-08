@@ -6,6 +6,7 @@
 import { normaliseOrigin, patternFor } from './lib/ship.js'
 import { lookSaid, CACHE, BG_KEY } from './lib/theme.js'
 import { coordsOf } from './lib/sky.js'
+import { parseExclude } from './lib/history.js'
 
 const $ = (id) => document.getElementById(id)
 const say = (text, bad = false) => {
@@ -170,6 +171,51 @@ $('bgremove').addEventListener('click', async () => {
   await chrome.storage.local.set({ backgroundAt: Date.now() })
   bgShow()
 })
+
+//  ── browsing history into orrery ──────────────────────────────────────
+
+async function histShow() {
+  const { historyDigest: h = {}, historySent: sent = {} } = await chrome.storage.local.get(['historyDigest', 'historySent'])
+  const granted = await chrome.permissions.contains({ permissions: ['history'] })
+  const on = Boolean(h.on && granted)
+  $('histon').checked = on
+  if (document.activeElement !== $('histexclude')) $('histexclude').value = (h.exclude || []).join('\n')
+  $('histnow').hidden = !on
+  const when = (ms) => new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(ms)
+  $('histsaid').textContent = !on ? 'Off.'
+    : sent.error ? `The last digest did not go: ${sent.error}. The next one carries that hour too.`
+      : sent.dropped ? `Orrery dropped the last digest: ${sent.dropped}. Turn its read channel on in Orrery.`
+        : sent.at ? `Last sent ${when(sent.at)}, ${sent.sites ? `${sent.sites} site${sent.sites === 1 ? '' : 's'}` : 'nothing new to send'}. The next goes within the hour.`
+          : 'On. The first digest goes within the hour.'
+}
+
+$('histon').addEventListener('change', async () => {
+  const { historyDigest: h = {} } = await chrome.storage.local.get('historyDigest')
+  if ($('histon').checked) {
+    //  inside the click: the browser asks only under one
+    const granted = await chrome.permissions.request({ permissions: ['history'] }).catch(() => false)
+    if (!granted) { $('histon').checked = false; $('histsaid').textContent = 'Without the browser\'s history there is nothing to send.'; return }
+    await chrome.storage.local.set({ historyDigest: { ...h, on: true } })
+  } else {
+    await chrome.storage.local.set({ historyDigest: { ...h, on: false } })
+    await chrome.permissions.remove({ permissions: ['history'] }).catch(() => {})
+  }
+  histShow()
+})
+$('histexclude').addEventListener('change', async () => {
+  const { historyDigest: h = {} } = await chrome.storage.local.get('historyDigest')
+  const exclude = parseExclude($('histexclude').value)
+  await chrome.storage.local.set({ historyDigest: { ...h, exclude } })
+  $('histexclude').value = exclude.join('\n')
+})
+$('histnow').addEventListener('click', async () => {
+  $('histsaid').textContent = 'Sending…'
+  const r = await chrome.runtime.sendMessage({ kind: 'historyNow' })
+  if (!r.ok) $('histsaid').textContent = `It did not go: ${r.error}`
+  else histShow()
+})
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && ('historySent' in changes || 'historyDigest' in changes)) histShow() })
+histShow()
 
 day = await chrome.storage.local.get(DAYKEYS)
 dayShow()

@@ -39,6 +39,8 @@ The code is sent once to the ship's own login form and never stored. The browser
 
 Click the nisfeb button, then **Today**. The page shows Talon's sky clock, then today's events, Orrery's open actions and its spend this month, unread mail and your Armillary balance. A card for an app your ship does not have says so, and the others still show. The page wears your Talon theme if you have a custom one.
 
+The search box at the top searches Brave Search when you press Enter; **Research** starts Ask Brave's Deep Research with the same words.
+
 The **Assistant** card is a box for asking about your day or saying what to do, answered by Armillary's model with your calendar and Orrery as its tools. Anything it would write (an event, a task, words for Orrery) is shown first and runs only when you press **Do it**. It needs an Armillary inference key on your ship, like **Ask**, and the model chosen for Ask in Options must be one that can call tools.
 
 To arrange the cards, press and drag one onto the place it should take. A long press or a right-click on a card starts arranging, as in Talon: arrows step a card, **×** takes it off the page, the header offers back the cards taken off, and **Done** ends it.
@@ -48,6 +50,7 @@ Everything the page shows is set in **Options**, under **The day page**:
 - **Use my Talon theme and font.** On by default. The line under it says what was last read from your ship: which Talon theme, its accent and its font. Off, the page uses Talon's own colours in the system's font.
 - **Light or dark.** Talon keeps this per device, so set it as your Talon is. A custom Talon theme brings its own.
 - **Location for the clock.** Type a town or postcode and press **Find**, then pick it from the list. Coordinates such as `51.5, -0.13` are taken as they are. Without a place the clock shows an even day and no weather. With one, it asks Open-Meteo for that place's weather every half hour, with the position rounded to about a kilometre. **Set a location** on the clock opens this field.
+- **Browsing history into Orrery** (a section of its own). Turn it on and allow the browser's history when asked. Every hour Orrery gets the sites you visited, how many pages of each and their titles, never the pages' text. List any site never to send. **Send one now** sends the hour so far.
 - **Background image.** Choose an image file. It stays in this browser only. **Remove the background** takes it away.
 
 ## 5. Make it your new tab (Brave)
