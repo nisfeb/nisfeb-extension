@@ -80,6 +80,8 @@
     .addcards { display: flex; gap: 6px; flex-wrap: wrap; }
     .addcards button { padding: 4px 10px; font-size: 12px; }
     .move button.remove { color: var(--error); }
+    li .acts { display: flex; gap: 6px; margin-top: 4px; }
+    li .acts button { padding: 2px 10px; font-size: 11px; }
     .panel.held { pointer-events: none; z-index: 5; outline: 1px solid var(--accent); box-shadow: 0 8px 24px rgb(0 0 0 / .25); transition: none; }
     .panel.over { outline: 2px solid var(--accent); }
     .move { display: none; position: absolute; top: 8px; right: 8px; gap: 4px; z-index: 1; }
@@ -137,6 +139,10 @@
         <input id="askq" placeholder="Ask about your day, or say what to do" aria-label="Ask the assistant">
         <button class="primary" id="asksend">Send</button>
       </form>
+    </section>
+    <section class="panel" id="priorities" data-card="priorities">
+      <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg><span>Current priorities</span><a data-app="/apps/orrery/">Orrery</a></h2>
+      <hr><div class="body"></div>
     </section>
     <section class="panel" id="cal" data-card="cal">
       <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/></svg><span>Today</span><a data-app="/apps/calendar/">Calendar</a></h2>
