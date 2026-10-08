@@ -41,6 +41,13 @@
   <label><input id="links" type="checkbox" style="width:auto"> Clickable Urbit links on web pages</label>
   <p class="note">Turns <code>urb://</code> addresses and furum's <code>f/~host/board</code> into links on the pages you read: a furum board opens on your ship, and an <code>urb://</code> link keeps its own address (for Lattice or Talon on this computer) with a <strong>↗</strong> beside it to open it in Lattice on your ship. A script has to run on every page for this, so turning it on asks the browser for access to all sites. The script only reads page text and adds links; it sends nothing anywhere. Turning it off stops the script; the site access stays until you remove it in the browser's extension settings.</p>
 
+  <label for="dayurl">Your day as the new tab</label>
+  <input id="dayurl" readonly>
+  <p class="note">A page with today's events, unread chats and mentions, open Orrery actions, mail waiting and your Armillary balance, with a reply box. The <strong>Today</strong> button in the popup opens it. To make it the new tab in Brave, two settings, both yours to change back: under <strong>Appearance</strong>, turn on <strong>Show home button</strong> and give it the address above as its custom address; under <strong>New tab page</strong>, set <strong>New tab page shows</strong> to <strong>Homepage</strong>. Choose <strong>Dashboard</strong> there to have Brave's own new tab back. The extension never replaces the new tab itself. Chrome has no such setting, so in Chrome the page opens from the popup.</p>
+  <button id="daycopy">Copy the address</button>
+  <button id="dayntp">Open Brave's new tab settings</button>
+  <button id="dayopen">Open it</button>
+
   <div id="status"></div>
   <script src="options.js" type="module"></script>
 </body>

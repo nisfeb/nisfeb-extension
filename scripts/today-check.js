@@ -1,0 +1,347 @@
+//  The day page in a throwaway headless Brave, against a stand-in ship.
+//
+//  No real ship and no cookie: a local server answers each app's route
+//  with the shapes its source writes, and logs every request. The run
+//  stages a copy of the extension, grants it the stand-in's origin as
+//  scripts/smoke.js does, and checks, from the page's own text:
+//
+//    no ship         the page says so and asks nothing of anyone
+//    cached          a stored snapshot is drawn at once, nothing is asked
+//    cached failures each card's words for 404, 403, no answer and 502,
+//                    with the data it last had
+//    a refresh       each source read once, at its own route; a second
+//                    tab inside five minutes asks nothing
+//    failures, live  a missing app, a 403, a 502 and a dropped connection,
+//                    one card each, the others drawn; /v6 activity falls
+//                    back to /v4 on a 500
+//    the reply box   the poke Send to a chat sends, then "Sent", and a
+//                    refusal in the agent's words
+//    leaving midway  a refresh, and a send, finish after the tab closes
+//
+//    node scripts/today-check.js        (BROWSER names the binary;
+//                                        SHOT=file.png keeps a picture)
+
+import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, dirname } from 'node:path'
+import { spawn } from 'node:child_process'
+import { createServer } from 'node:http'
+import { fileURLToPath } from 'node:url'
+import { patternFor, localDate } from '../lib/ship.js'
+
+//  ── the stand-in ship ────────────────────────────────────────────────
+
+const now = Date.now()
+const [y, m, d] = localDate(new Date(now)).split('-').map(Number)
+const todayUtc = Date.UTC(y, m - 1, d)
+const asked = []
+let mode = 'ok'
+let ack = { ok: 'ok' }
+let slow = 0
+const pokes = []
+
+const fixtures = {
+  '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
+  '/~/scry/chat/dm.json': ['~sampel-palnet'],
+  '/~/scry/chat/clubs.json': {},
+  '/~/scry/groups/v3/groups.json': { '~bus/club': { meta: { title: 'Bus Club' }, channels: { 'chat/~bus/general': { meta: { title: 'General' } } } } },
+  '/~/scry/activity/v6/activity/full.json': {
+    'channel/chat/~bus/general': { recency: now, count: 3, 'notify-count': 1, notify: true, unread: { id: '~zod/1', count: 3, notify: true } },
+    'ship/~sampel-palnet': { recency: now - 1000, count: 1, 'notify-count': 0, notify: false, unread: { id: '~sampel-palnet/1', count: 1, notify: false } },
+  },
+  '/apps/orrery/api/actions?status=open': [{ id: 'a1', kind: 'call', title: 'Call Dana about the lease', status: 'proposed', by: 'orrery', about: [], history: [] }],
+  '/apps/auspex/api/inbox?view=inbox&limit=20': { total: 3, offset: 0, limit: 20, view: 'inbox', unread: 2, labels: [], threads: [
+    { id: '0v1', subject: 'Dinner on Friday', from: '~sampel-palnet', last: now, unread: true },
+    { id: '0v2', subject: 'Read already', from: '~bus', last: now - 1, unread: false },
+  ] },
+  '/apps/armillary/api/account': { ship: '~zod', balance: 12345678, keys_pending: [{ secret: 'sk-or-SECRET' }], vendor: '~wex', self: '~zod', stale: 3 },
+}
+
+const server = createServer((req, res) => {
+  const path = req.url
+  asked.push(`${req.method} ${path.replace(/^\/~\/channel\/[^?]+/, '/~/channel/<id>')}`)
+  if (path.startsWith('/~/channel/')) {
+    if (req.method === 'PUT') {
+      let body = ''
+      req.on('data', (c) => { body += c })
+      req.on('end', () => { pokes.push(JSON.parse(body)); res.writeHead(204).end() })
+      return
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    setTimeout(() => res.write(`id: 0\ndata: ${JSON.stringify({ id: 1, response: 'poke', ...ack })}\n\n`), slow)
+    return
+  }
+  if (path.startsWith('/apps/calendar/window.json')) {
+    if (mode === 'fail') return res.writeHead(404).end('<html>not found</html>')
+    return json(res, { caps: [], rows: [
+      { id: 'e1', cal: 'default', idx: 0, meta: { name: 'Trip to Lisbon' }, cat: 'allday', kind: 'once', all: true, done: false, l: todayUtc, r: todayUtc + 864e5 },
+      { id: 'e2', cal: 'default', idx: 0, meta: { name: 'Standup' }, cat: 'timed', kind: 'once', all: false, done: false, l: now - 60000, r: now + 60000 },
+      { id: 't1', cal: 'default', idx: 0, meta: { name: 'Pay the rent' }, cat: 'todo', kind: 'todo', all: true, done: false, l: todayUtc, r: todayUtc + 864e5, priority: 0 },
+    ] })
+  }
+  if (mode === 'fail') {
+    if (path === '/apps/calendar/config.json') return res.writeHead(404).end('<html>not found</html>')
+    if (path === '/~/scry/activity/v6/activity/full.json') return res.writeHead(500).end('<html>no</html>')
+    if (path === '/~/scry/activity/v4/activity/full.json') return json(res, fixtures['/~/scry/activity/v6/activity/full.json'])
+    if (path.startsWith('/apps/orrery/')) return res.writeHead(403).end('Forbidden')
+    if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
+    if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
+  }
+  if (path in fixtures) return setTimeout(() => json(res, fixtures[path]), path.startsWith('/apps/armillary/') ? slow : 0)
+  res.writeHead(404).end('not here')
+})
+const json = (res, body) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body))
+await new Promise((r) => server.listen(0, '127.0.0.1', r))
+const SHIP = `http://127.0.0.1:${server.address().port}`
+
+//  ── stage, grant, launch (as scripts/smoke.js) ───────────────────────
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const stage = mkdtempSync(join(tmpdir(), 'nisfeb-ext-'))
+const profile = mkdtempSync(join(tmpdir(), 'nisfeb-profile-'))
+for (const f of ['manifest.json', 'background.js', 'content.js', 'popup.html', 'popup.js', 'options.html', 'options.js', 'today.html', 'today.js', 'lib', 'icons']) {
+  cpSync(join(root, f), join(stage, f), { recursive: true })
+}
+function launch() {
+  const browser = spawn(process.env.BROWSER || '/usr/lib/brave-browser/brave', [
+    '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+    `--user-data-dir=${profile}`, '--remote-debugging-port=0',
+    `--load-extension=${stage}`, `--disable-extensions-except=${stage}`, 'about:blank',
+  ], { stdio: ['ignore', 'ignore', 'pipe'] })
+  const wsUrl = new Promise((resolve, reject) => {
+    let buf = ''
+    browser.stderr.on('data', (c) => { buf += c; const x = /DevTools listening on (ws:\/\/\S+)/.exec(buf); if (x) resolve(x[1]) })
+    browser.on('exit', (c) => reject(new Error(`browser exited ${c}\n${buf}`)))
+    setTimeout(() => reject(new Error(`no devtools endpoint in 15 s\n${buf}`)), 15000)
+  })
+  return { browser, wsUrl }
+}
+{
+  const first = launch()
+  await first.wsUrl
+  await new Promise((r) => setTimeout(r, 2500))
+  first.browser.kill()
+  await new Promise((r) => first.browser.once('exit', r))
+  const pf = join(profile, 'Default', 'Preferences')
+  const prefs = JSON.parse(readFileSync(pf, 'utf8'))
+  const settings = prefs.extensions.settings
+  const e = settings[Object.keys(settings).find((k) => settings[k].path === stage)]
+  for (const k of ['active_permissions', 'granted_permissions', 'runtime_granted_permissions']) {
+    e[k] = { ...(e[k] || {}), api: (e[k] && e[k].api) || [], explicit_host: [patternFor(SHIP)], manifest_permissions: [], scriptable_host: [] }
+  }
+  delete e.withholding_permissions
+  writeFileSync(pf, JSON.stringify(prefs))
+}
+const { browser, wsUrl } = launch()
+const ws = new WebSocket(await wsUrl)
+await new Promise((r, j) => { ws.onopen = r; ws.onerror = j })
+let seq = 0
+const waiting = new Map()
+const errors = []
+ws.onmessage = (ev) => {
+  const msg = JSON.parse(ev.data)
+  if (msg.method === 'Runtime.exceptionThrown') errors.push(msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text)
+  if (!msg.id || !waiting.has(msg.id)) return
+  const { r, j } = waiting.get(msg.id)
+  waiting.delete(msg.id)
+  msg.error ? j(new Error(msg.error.message)) : r(msg.result)
+}
+const cdp = (method, params = {}, sessionId) => new Promise((r, j) => {
+  const id = ++seq
+  waiting.set(id, { r, j })
+  ws.send(JSON.stringify({ id, method, params, sessionId }))
+  setTimeout(() => { if (waiting.has(id)) { waiting.delete(id); j(new Error(`${method} timed out`)) } }, 90000)
+})
+async function evaluate(expression, sessionId) {
+  const r = await cdp('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)
+  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text)
+  return r.result.value
+}
+
+let worker
+for (let i = 0; i < 50 && !worker; i++) {
+  const { targetInfos } = await cdp('Target.getTargets')
+  worker = targetInfos.find((t) => t.type === 'service_worker' && t.url.endsWith('/background.js'))
+  if (!worker) await new Promise((r) => setTimeout(r, 200))
+}
+if (!worker) throw new Error('the extension worker never appeared')
+const { sessionId: ws1 } = await cdp('Target.attachToTarget', { targetId: worker.targetId, flatten: true })
+for (let i = 0; i < 50; i++) {
+  if (await evaluate('typeof nisfeb', ws1).catch(() => '') === 'object') break
+  await new Promise((r) => setTimeout(r, 100))
+}
+const store = (obj) => evaluate(`chrome.storage.session.clear().then(() => chrome.storage.local.clear()).then(() => chrome.storage.local.set(${JSON.stringify(obj)}))`, ws1)
+const PAGE = `chrome-extension://${new URL(worker.url).host}/today.html`
+
+//  Open the page, wait until its text has everything in `want` (or time
+//  runs out), and hand back the text and a session for driving it.
+async function page(want, ms = 15000) {
+  const { targetId } = await cdp('Target.createTarget', { url: PAGE })
+  const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true })
+  await cdp('Runtime.enable', {}, sessionId)
+  return { targetId, sessionId, text: await textOf(sessionId, want, ms) }
+}
+async function textOf(sessionId, want, ms = 15000) {
+  let text = ''
+  for (const end = Date.now() + ms; Date.now() < end;) {
+    text = await evaluate('document.body.innerText', sessionId).catch(() => '')
+    if (want.every((w) => text.includes(w))) break
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  return text
+}
+const close = (t) => cdp('Target.closeTarget', { targetId: t.targetId })
+
+const failures = []
+function check(what, cond, detail = '') {
+  console.log(`${cond ? 'ok  ' : 'FAIL'} ${what}`)
+  if (!cond) { failures.push(what); if (detail) console.log(String(detail).split('\n').map((l) => `     ${l}`).join('\n')) }
+}
+const has = (text, list) => list.filter((w) => !text.includes(w))
+
+//  ── the runs ─────────────────────────────────────────────────────────
+
+try {
+  //  1. no ship
+  await store({})
+  let t = await page(['No ship yet'])
+  check('no ship: says so', t.text.includes('No ship yet. Set one up in Options'), t.text)
+  check('no ship: asks nothing', asked.length === 0, asked.join('\n'))
+  await close(t)
+
+  //  2. a stored snapshot, fresh: drawn at once, nothing asked
+  const cards = {
+    cal: { at: now, error: '', data: { zone: '', zoneAt: now, rows: [{ name: 'Cached standup', cat: 'timed', all: false, done: false, l: now - 60000, r: now + 60000 }] } },
+    chats: { at: now, error: '', data: [{ whom: 'chat/~bus/general', title: 'Bus Club / General', count: 3, mentions: 1, recency: now }] },
+    actions: { at: now, error: '', data: [{ id: 'a1', title: 'Cached action', status: 'approved', kind: 'call' }] },
+    mail: { at: now, error: '', data: { unread: 4, threads: [{ subject: 'Cached subject', from: '~bus', last: now }] } },
+    money: { at: now, error: '', data: { vendor: '~wex', balance: 2500000 } },
+  }
+  await store({ origin: SHIP, ship: '~zod', status: 'connected', today: { origin: SHIP, tried: now, cards } })
+  t = await page(['Cached standup', 'Bus Club / General', 'Cached action', 'Cached subject', '$2.50'])
+  check('cached: every card drawn', has(t.text, ['Cached standup', 'Bus Club / General', '@1 · 3', 'Cached action', '4 unread', 'Cached subject', '$2.50', 'with ~wex']).length === 0, t.text)
+  check('cached: nothing asked of the ship', asked.length === 0, asked.join('\n'))
+  check('cached: no exception in the page', errors.length === 0, errors.join('\n'))
+  await close(t)
+
+  //  3. a snapshot whose cards failed: each says why, the data stays
+  const failed = {
+    cal: { error: 'HTTP 404' },
+    chats: { ...cards.chats, error: 'signed out' },
+    actions: { error: 'Failed to fetch' },
+    mail: { ...cards.mail, error: 'HTTP 502' },
+    money: cards.money,
+  }
+  await store({ origin: SHIP, ship: '~zod', status: 'signed-out', today: { origin: SHIP, tried: now, cards: failed } })
+  t = await page(['Calendar is not installed'])
+  const said = [
+    'Calendar is not installed on ~zod.',
+    'Signed out of ~zod: connect again in Options.',
+    'Bus Club / General',
+    '~zod did not answer: it may be down or busy.',
+    'Cached subject',
+    '$2.50',
+    '~zod: signed out, connect again in Options',
+  ]
+  check('cached failures: each card\'s words, the old data kept', has(t.text, said).length === 0, `missing: ${has(t.text, said).join(' | ')}\n${t.text}`)
+  await close(t)
+
+  //  4. a refresh against the stand-in: every source once, then the cards
+  await store({ origin: SHIP, ship: '~zod', status: 'connected' })
+  const live = ['Trip to Lisbon', 'Standup', 'Pay the rent', 'Bus Club / General', '@1 · 3', '~sampel-palnet', 'Call Dana about the lease', '2 unread', 'Dinner on Friday', '$12.35']
+  t = await page(live, 30000)
+  check('refresh: every card drawn from the ship', has(t.text, live).length === 0, `missing: ${has(t.text, live).join(' | ')}\n${t.text}`)
+  check('refresh: the mail page shows only unread subjects', !t.text.includes('Read already'), t.text)
+  const once = [
+    'GET /apps/calendar/config.json',
+    `GET /apps/calendar/window.json?from=${'*'}`,
+    'GET /~/scry/activity/v6/activity/full.json',
+    'GET /~/scry/chat/dm.json',
+    'GET /~/scry/chat/clubs.json',
+    'GET /~/scry/groups/v3/groups.json',
+    'GET /apps/orrery/api/actions?status=open',
+    'GET /apps/auspex/api/inbox?view=inbox&limit=20',
+    'GET /apps/armillary/api/account',
+  ]
+  const norm = asked.map((a) => a.replace(/window\.json\?from=.*/, 'window.json?from=*'))
+  check('refresh: each source asked once, at its own route', JSON.stringify([...norm].sort()) === JSON.stringify([...once].sort()), norm.join('\n'))
+  const win = asked.find((a) => a.includes('window.json'))
+  const [, from, to] = /from=(\d+)&to=(\d+)/.exec(win)
+  //  today and tomorrow here, and as UTC dates for the whole-day rows
+  const midnight = new Date(y, m - 1, d).getTime()
+  check('refresh: the window covers today and tomorrow', Number(from) <= Math.min(todayUtc, midnight) && Number(to) >= Math.max(todayUtc, midnight) + 2 * 864e5, win)
+  const secret = await evaluate('chrome.storage.local.get(null).then((s) => JSON.stringify(s))', ws1)
+  check('refresh: no armillary key or secret is stored', !secret.includes('sk-or') && !secret.includes('keys_pending'), secret)
+  await close(t)
+  const before = asked.length
+  t = await page(live)
+  await new Promise((r) => setTimeout(r, 1500))
+  check('a second tab within five minutes asks nothing', asked.length === before, asked.slice(before).join('\n'))
+  check('refresh: no exception in the page', errors.length === 0, errors.join('\n'))
+  if (process.env.SHOT) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false }, t.sessionId)
+    writeFileSync(process.env.SHOT, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
+  }
+
+  //  6. the reply box: Talon's channel post, then "Sent"
+  pokes.length = 0
+  await evaluate(`document.querySelector('#chats button.link').click(); document.getElementById('rtext').value = 'on my way'; document.getElementById('reply').requestSubmit()`, t.sessionId)
+  let out = await textOf(t.sessionId, ['Sent to Bus Club / General'])
+  check('reply: sent, and said so', out.includes('Sent to Bus Club / General'), out)
+  const [poke, del] = pokes
+  const p0 = poke && poke[0]
+  check('reply: the channel-action-2 poke Send to a chat sends',
+    p0 && p0.action === 'poke' && p0.ship === 'zod' && p0.app === 'channels' && p0.mark === 'channel-action-2' &&
+    p0.json.channel.nest === 'chat/~bus/general' && p0.json.channel.action.post.add.author === '~zod' &&
+    JSON.stringify(p0.json.channel.action.post.add.content) === JSON.stringify([{ inline: ['on my way'] }]), JSON.stringify(pokes))
+  check('reply: the channel is deleted after', JSON.stringify(del) === JSON.stringify([{ id: 2, action: 'delete' }]), JSON.stringify(pokes))
+  ack = { err: 'bad-nest\n/app/channels/hoon' }
+  await evaluate(`document.getElementById('rtext').value = 'again'; document.getElementById('reply').requestSubmit()`, t.sessionId)
+  out = await textOf(t.sessionId, ['refused it'])
+  check('reply: a refusal in the agent\'s words', out.includes('%channels refused it: bad-nest'), out)
+  ack = { ok: 'ok' }
+
+  //  leaving midway: a send whose answer comes after the tab is gone
+  pokes.length = 0
+  slow = 1500
+  await evaluate(`document.getElementById('rtext').value = 'leaving'; document.getElementById('reply').requestSubmit()`, t.sessionId)
+  await new Promise((r) => setTimeout(r, 300))
+  await close(t)
+  await new Promise((r) => setTimeout(r, 2500))
+  check('leaving midway: the send finishes and its channel is deleted', pokes.length === 2 && pokes[1][0].action === 'delete', JSON.stringify(pokes))
+  const recent = await evaluate("chrome.storage.local.get('lastChats').then((s) => JSON.stringify(s.lastChats))", ws1)
+  check('leaving midway: the chat is kept as picked last', recent.includes('chat/~bus/general'), recent)
+
+  //  leaving midway: a refresh with a slow source, the tab closed early
+  await store({ origin: SHIP, ship: '~zod', status: 'connected' })
+  t = await page(['Reading'], 3000)
+  await close(t)
+  await new Promise((r) => setTimeout(r, 2500))
+  const kept = JSON.parse(await evaluate("chrome.storage.local.get('today').then((s) => JSON.stringify(s.today))", ws1))
+  check('leaving midway: the refresh finishes and is kept', kept && kept.cards && kept.cards.money && kept.cards.money.data && kept.cards.money.data.balance === 12345678, JSON.stringify(kept))
+  slow = 0
+
+  //  5. failures, live: one card each, the rest drawn
+  mode = 'fail'
+  asked.length = 0
+  await store({ origin: SHIP, ship: '~zod', status: 'connected' })
+  const fail = [
+    'Calendar is not installed on ~zod.',
+    'Signed out of ~zod: connect again in Options.',
+    '~zod did not answer: it may be down or busy.',
+    'Bus Club / General',
+  ]
+  t = await page(fail, 30000)
+  check('failures, live: each card says why, the rest drawn', has(t.text, fail).length === 0, `missing: ${has(t.text, fail).join(' | ')}\n${t.text}`)
+  check('failures, live: two cards did not answer (502 and a dropped connection)', t.text.split('~zod did not answer').length - 1 === 2, t.text)
+  check('failures, live: /v6 activity fell back to /v4 on a 500', asked.includes('GET /~/scry/activity/v4/activity/full.json'), asked.join('\n'))
+  check('failures, live: no HTML from the ship is shown', !/Bad Gateway|<html>/.test(t.text), t.text)
+  await close(t)
+} finally {
+  browser.kill()
+  server.close()
+  rmSync(stage, { recursive: true, force: true })
+  rmSync(profile, { recursive: true, force: true })
+}
+console.log(failures.length ? `\n${failures.length} failed` : '\nall passed')
+process.exit(failures.length ? 1 : 0)
