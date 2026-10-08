@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  REFRESH_MS, due, mergeCards, statusOf, spendOf, ordered, moved, CARDS, calRows, okZone, ymd, agenda, calWindow,
+  REFRESH_MS, due, mergeCards, statusOf, spendOf, ordered, moved, CARDS, prioritiesOf, prioritiesFresh, PRIORITIES_EVERY_MS, calRows, okZone, ymd, agenda, calWindow,
   mailOf, actionsOf, balanceOf, money,
 } from '../lib/today.js'
 import { Ship, explain, chatChoices, sendToChat } from '../lib/ship.js'
@@ -264,8 +264,8 @@ test('spendOf: this month\'s spend, nothing yet in a new month, null with no rec
 
 test('ordered: the saved order first, new cards after, gone ones dropped', () => {
   assert.deepEqual(ordered(null), CARDS)
-  assert.deepEqual(ordered(['mail', 'clock']), ['mail', 'clock', 'cal', 'actions', 'money', 'assistant'])
-  assert.deepEqual(ordered(['chats', 'money', 'money']), ['money', 'clock', 'cal', 'actions', 'mail', 'assistant'])
+  assert.deepEqual(ordered(['mail', 'clock']), ['mail', 'clock', 'cal', 'actions', 'money', 'assistant', 'priorities'])
+  assert.deepEqual(ordered(['chats', 'money', 'money']), ['money', 'clock', 'cal', 'actions', 'mail', 'assistant', 'priorities'])
 })
 
 test('moved: dropped on a card, it takes that card\'s place', () => {
@@ -274,4 +274,27 @@ test('moved: dropped on a card, it takes that card\'s place', () => {
   assert.deepEqual(moved(o, 'money', o.indexOf('cal')), ['clock', 'money', 'cal', 'actions', 'mail'], 'back: before it')
   assert.deepEqual(moved(o, 'cal', -3), ['cal', 'clock', 'actions', 'mail', 'money'])
   assert.deepEqual(moved(o, 'cal', 99), ['clock', 'actions', 'mail', 'money', 'cal'])
+})
+
+//  ── orrery's current priorities ─────────────────────────────────────
+
+test('prioritiesOf: at most five, each with words to search, clipped', () => {
+  const items = Array.from({ length: 7 }, (_, i) => ({ title: ` P${i} `, why: 'because', query: i === 1 ? '' : `q${i}` }))
+  const r = prioritiesOf({ at: '2026-10-08T15:00:00Z', items: [{ title: '' }, ...items] })
+  assert.equal(r.at, '2026-10-08T15:00:00Z')
+  assert.equal(r.items.length, 5)
+  assert.deepEqual(r.items[0], { title: 'P0', why: 'because', query: 'q0' })
+  assert.equal(r.items[1].query, 'P1', 'no query: the title is searched')
+  assert.deepEqual(prioritiesOf(null), { at: '', items: [] })
+})
+
+test('the priorities card is read every half hour, and keeps what it has between', () => {
+  const now = Date.UTC(2026, 9, 8, 15)
+  assert.ok(prioritiesFresh({ at: now - 60000, data: { items: [] } }, now))
+  assert.ok(!prioritiesFresh({ at: now - PRIORITIES_EVERY_MS, data: { items: [] } }, now))
+  assert.ok(!prioritiesFresh({ at: now - 60000, error: 'x' }, now), 'nothing kept: read it')
+  assert.ok(!prioritiesFresh({ at: now + 60000, data: {} }, now), 'a clock that went back')
+  const old = { priorities: { at: 1, data: { items: [{ title: 'kept' }] }, error: '' } }
+  assert.deepEqual(mergeCards(old, { priorities: { keep: true }, mail: { data: 1 } }, 5), { priorities: old.priorities, mail: { at: 5, data: 1, error: '' } })
+  assert.deepEqual(mergeCards({}, { priorities: { keep: true } }, 5), {})
 })
