@@ -4,7 +4,7 @@ Your Urbit ship from any page. One extension for the nisfeb apps that run on the
 
 ## Install
 
-Load it unpacked: **brave://extensions**, turn on Developer mode, **Load unpacked**, pick this directory. Then open its **Options** page and give it two things: the ship's URL and its `+code`.
+Load it unpacked: **brave://extensions**, turn on Developer mode, **Load unpacked**, pick this directory. Then open its **Options** page and give it two things: the ship's URL and its `+code`. Step by step, with your day as Brave's new tab and a troubleshooting table: [docs/setup.md](docs/setup.md). Agents working here read [AGENTS.md](AGENTS.md).
 
 Connect asks the browser for permission to talk to that one origin (the manifest asks for nothing at install), then POSTs the code to `/~/login`, eyre's own login form. The answer sets the session cookie for that origin and the browser's cookie jar keeps it. **The code is used once and never stored.** A ship restart invalidates the cookie, and any 403 after that flips the status to signed out: connect again.
 
