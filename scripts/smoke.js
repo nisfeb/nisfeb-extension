@@ -194,13 +194,15 @@ await step('chats', async () => {
   const r = await handle({ kind: 'chats' })
   return r.ok && Array.isArray(r.items) ? true : r
 })
-//  The day page's refresh: five reads, each card with data or its reason.
+//  The day page's refresh: four cards, each with data or its reason, and
+//  Talon's look read off %settings.
 await step('today', async () => {
   const r = await handle({ kind: 'today' })
-  const t = await inWorker("chrome.storage.local.get('today').then((s) => s.today)")
-  const cards = (t && t.cards) || {}
+  const t = await inWorker("chrome.storage.local.get(['today', 'talonLook'])")
+  const cards = (t.today && t.today.cards) || {}
   const said = Object.fromEntries(Object.entries(cards).map(([k, c]) => [k, c.error || 'ok']))
-  return r.ok && Object.keys(cards).length === 5 && Object.values(said).every((v) => v === 'ok') ? true : { ok: false, error: JSON.stringify(said) }
+  const ok = r.ok && Object.keys(cards).length === 4 && Object.values(said).every((v) => v === 'ok') && t.talonLook
+  return ok ? true : { ok: false, error: JSON.stringify({ said, look: Boolean(t.talonLook) }) }
 })
 
 await step('bookmark is listed', async () => JSON.parse((await api('/apps/lattice/bookmarks')).body).items.some((i) => i.url === url))
