@@ -16,6 +16,8 @@
 //    leaving midway  a refresh finishes after the tab closes
 //    Talon's theme   the active custom theme read off %settings and set on
 //                    the page, off when turned off, built-in on a 404
+//    a background    an image chosen is behind the page, in a new tab too,
+//                    and gone when removed; a file that is not one is refused
 //
 //    node scripts/today-check.js        (BROWSER names the binary;
 //                                        SHOT=file.png keeps a picture)
@@ -265,6 +267,27 @@ try {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false }, t.sessionId)
     writeFileSync(process.env.SHOT, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
   }
+
+  //  a background: chosen, kept for the next tab, removed
+  const choose = (type) => evaluate(`(async () => {
+    const c = new OffscreenCanvas(4, 4); c.getContext('2d').fillRect(0, 0, 4, 4)
+    const blob = '${type}' === 'image/png' ? await c.convertToBlob() : new Blob(['not a picture'], { type: '${type}' })
+    const dt = new DataTransfer(); dt.items.add(new File([blob], 'x', { type: '${type}' }))
+    const input = document.getElementById('bgfile'); input.files = dt.files; input.dispatchEvent(new Event('change'))
+  })()`, t.sessionId)
+  const pictured = (s) => evaluate("document.body.classList.contains('pictured') && document.body.style.backgroundImage.startsWith('url(\"blob:')", s)
+  const settle = async (s, want) => { for (let i = 0; i < 25 && await pictured(s) !== want; i++) await new Promise((r) => setTimeout(r, 200)); return pictured(s) }
+  await choose('text/plain')
+  await evaluate("document.getElementById('look').open = true", t.sessionId)
+  const said1 = await textOf(t.sessionId, ['is not an image'], 3000)
+  check('background: a file that is not an image is refused', said1.includes('x is not an image.') && !await pictured(t.sessionId), said1.slice(-300))
+  await choose('image/png')
+  check('background: the image chosen is behind the page', await settle(t.sessionId, true) === true, await evaluate("document.getElementById('bgsay').textContent", t.sessionId))
+  const t2 = await page(['Trip to Lisbon'])
+  check('background: a new tab has it too', await settle(t2.sessionId, true) === true)
+  await evaluate("document.getElementById('bgremove').click()", t.sessionId)
+  check('background: removed, from every open tab', await settle(t.sessionId, false) === false && await settle(t2.sessionId, false) === false)
+  await close(t2)
 
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })

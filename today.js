@@ -12,7 +12,7 @@ import { lookVars, VARS } from './lib/theme.js'
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
 const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
-const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme']
+const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'backgroundAt']
 const SHOWN = 12
 
 let st = {}
@@ -122,6 +122,51 @@ async function refresh() {
   render()
 }
 
+//  ── the background: one image, in this browser's Cache Storage ─────
+//
+//  Not storage.local, whose quota (10 MB) a photo can take whole. The
+//  time it changed goes in storage.local, so every open day tab redraws.
+//  ponytail: kept as chosen, not scaled down; scale it if big photos
+//  make the new tab slow to paint.
+
+//  The Cache API keys only http(s) URLs, and a page here is
+//  chrome-extension://, so the key is a name that is never fetched.
+const BG = 'https://day.nisfeb.invalid/background'
+let bgUrl = ''
+
+async function background() {
+  let url = ''
+  try {
+    const hit = await (await caches.open('nisfeb-day')).match(BG)
+    if (hit) url = URL.createObjectURL(await hit.blob())
+  } catch { /* no cache: no picture */ }
+  if (bgUrl) URL.revokeObjectURL(bgUrl)
+  bgUrl = url
+  document.body.style.backgroundImage = url ? `url("${url}")` : ''
+  document.body.classList.toggle('pictured', Boolean(url))
+  $('bgremove').hidden = !url
+}
+
+$('bgfile').addEventListener('change', async () => {
+  const f = $('bgfile').files[0]
+  $('bgfile').value = ''
+  if (!f) return
+  if (!f.type.startsWith('image/')) { $('bgsay').textContent = `${f.name} is not an image.`; return }
+  try {
+    await (await caches.open('nisfeb-day')).put(BG, new Response(f, { headers: { 'content-type': f.type } }))
+  } catch (e) {
+    $('bgsay').textContent = `Could not keep it: ${e.message || e}`
+    return
+  }
+  $('bgsay').textContent = 'Kept in this browser only.'
+  await chrome.storage.local.set({ backgroundAt: Date.now() })
+})
+
+$('bgremove').addEventListener('click', async () => {
+  await (await caches.open('nisfeb-day')).delete(BG)
+  await chrome.storage.local.set({ backgroundAt: Date.now() })
+})
+
 //  ── wiring ───────────────────────────────────────────────────────────
 
 $('opts').addEventListener('click', () => chrome.runtime.openOptionsPage())
@@ -132,6 +177,7 @@ $('talontheme').addEventListener('change', () => chrome.storage.local.set({ useT
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !KEYS.some((k) => k in changes)) return
   for (const k of KEYS) if (k in changes) st[k] = changes[k].newValue
+  if ('backgroundAt' in changes) background()
   render()
 })
 
@@ -141,4 +187,5 @@ setInterval(again, 15 * 60000)
 
 st = await chrome.storage.local.get(KEYS)
 render()
+background()
 refresh()

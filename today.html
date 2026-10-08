@@ -37,6 +37,10 @@
     button { padding: .3rem .7rem; cursor: pointer; }
     input { padding: .35rem; width: 100%; box-sizing: border-box; }
     footer { margin-top: 2rem; font-size: .85rem; color: var(--muted); }
+    /* a picture behind the page: the cards and the header stay legible on it */
+    body { background-position: center; background-size: cover; background-attachment: fixed; background-repeat: no-repeat; }
+    body.pictured section, body.pictured header, body.pictured footer { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(8px); }
+    body.pictured header, body.pictured footer { border-radius: .6rem; padding: .5rem .8rem; }
     details { margin-top: 1rem; }
     summary { cursor: pointer; width: max-content; }
     .opts { display: grid; gap: .6rem; margin-top: .6rem; max-width: 30rem; }
@@ -71,6 +75,8 @@
       <div class="opts">
         <label><input type="checkbox" id="talontheme"> Use my Talon theme</label>
         <p class="muted">Your custom theme and accent in Talon, read from your ship. Off, or with no custom theme in Talon, the page uses Talon's own colours.</p>
+        <label>Background image <input type="file" id="bgfile" accept="image/*"></label>
+        <p><button id="bgremove" hidden>Remove the background</button> <span class="muted" id="bgsay">Kept in this browser only.</span></p>
       </div>
     </details>
     <p id="brave" hidden>
