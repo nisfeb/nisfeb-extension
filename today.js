@@ -145,6 +145,9 @@ $('placeform').addEventListener('submit', async (e) => {
 
 $('placeclear').addEventListener('click', () => chrome.storage.local.remove(['place', 'weather']))
 
+//  No place, nothing to ask. The worker decides whether the forecast is due.
+const askWeather = () => { if (st.place) ask({ kind: 'weather' }).catch(() => { /* the worker is reloading: the next view asks again */ }) }
+
 function render() {
   const now = Date.now()
   look()
@@ -226,7 +229,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !KEYS.some((k) => k in changes)) return
   for (const k of KEYS) if (k in changes) st[k] = changes[k].newValue
   if ('backgroundAt' in changes) background()
-  if ('place' in changes) ask({ kind: 'weather' }).catch(() => {})
+  if ('place' in changes) askWeather()
   render()
 })
 
@@ -234,7 +237,7 @@ const again = () => {
   if (document.visibilityState !== 'visible') return
   render()
   refresh()
-  ask({ kind: 'weather' }).catch(() => { /* the worker is reloading: the next view asks again */ })
+  askWeather()
 }
 document.addEventListener('visibilitychange', again)
 setInterval(again, 15 * 60000)
@@ -245,5 +248,5 @@ addEventListener('resize', paintClock)
 st = await chrome.storage.local.get(KEYS)
 render()
 background()
-ask({ kind: 'weather' }).catch(() => {})
+askWeather()
 refresh()
