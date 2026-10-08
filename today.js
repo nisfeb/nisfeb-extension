@@ -8,14 +8,14 @@
 
 import { explain, patternFor } from './lib/ship.js'
 import { agenda, money, due, ordered, moved } from './lib/today.js'
-import { lookVars, fontOf, VARS, CACHE, BG_KEY, fontKey } from './lib/theme.js'
+import { lookVars, fontOf, displayName, VARS, CACHE, BG_KEY, fontKey } from './lib/theme.js'
 import { skyFor, placeKey } from './lib/sky.js'
 import { drawDial } from './sky-dial.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
 const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
-const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'dayMode', 'backgroundAt', 'place', 'weather', 'dayOrder', 'assistant']
+const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'dayMode', 'backgroundAt', 'place', 'weather', 'dayOrder', 'dayHidden', 'assistant']
 const SHOWN = 12
 
 let st = {}
@@ -94,7 +94,8 @@ function card(k, c, now) {
 function hello(now) {
   const h = new Date(now).getHours()
   const said = h >= 5 && h <= 11 ? 'Good morning' : h >= 12 && h <= 16 ? 'Good afternoon' : h >= 17 && h <= 21 ? 'Good evening' : 'Good night'
-  return st.ship ? `${said}, ${st.ship}` : said
+  const look = st.talonLook && st.talonLook.origin === st.origin ? st.talonLook : null
+  return st.ship ? `${said}, ${displayName(st.ship, look)}` : said
 }
 
 function header(now) {
@@ -171,62 +172,116 @@ const askWeather = () => { if (st.place) ask({ kind: 'weather' }).catch(() => { 
 
 //  ── arranging, as on Talon's home page ───────────────────────────────
 //
-//  No Arrange button: a long press or a right-click on any card starts
-//  it, as on Talon. Cards are dragged onto the place they should take,
-//  or moved a step with the arrows each shows; Done or Escape ends it.
+//  A card is pressed and dragged onto the place it should take, at any
+//  time: it follows the pointer and lands where it is let go. A long
+//  press or a right-click starts arranging, as on Talon, which shows a
+//  step arrow on each card and a Done; a long press carries straight on
+//  into a drag. Pointer events, not the browser's drag and drop, which
+//  started late and dropped nothing (measured with real input). Links,
+//  controls and the assistant's words keep their own press.
 //  The order is kept per browser, as Talon keeps its own per device.
 
 const cards = () => [...document.querySelectorAll('[data-card]')]
 const order = () => ordered(st.dayOrder)
 const setOrder = (o) => chrome.storage.local.set({ dayOrder: o })
+const OWN_PRESS = 'a, button, input, textarea, select, .talk'
+
+//  Cards taken off the page, as on Talon's: kept per browser, and put
+//  back from the header while arranging.
+const NAMES = { clock: 'Clock', cal: 'Today', actions: 'Orrery', mail: 'Mail', money: 'Armillary', assistant: 'Assistant' }
+const hidden = () => new Set(Array.isArray(st.dayHidden) ? st.dayHidden : [])
+const setHidden = (h) => chrome.storage.local.set({ dayHidden: [...h] })
 
 function place() {
-  order().forEach((k, i) => { $(k).style.order = String(i) })
+  const h = hidden()
+  order().forEach((k, i) => {
+    $(k).style.order = String(i)
+    $(k).classList.toggle('gone', h.has(k))
+  })
+  const off = order().filter((k) => h.has(k))
+  $('addcards').replaceChildren(...off.map((k) => el('button', {
+    textContent: `+ ${NAMES[k]}`, title: `Put ${NAMES[k]} back on the page`,
+    onclick: () => { const n = hidden(); n.delete(k); setHidden(n) },
+  })))
+  $('addcards').hidden = !off.length || !document.body.classList.contains('arranging')
 }
 
 function arranging(on) {
   document.body.classList.toggle('arranging', on)
   $('done').hidden = !on
-  for (const c of cards()) c.draggable = on
+  place()
 }
 
 for (const c of cards()) {
   const k = c.dataset.card
   c.append(el('div', { className: 'move' },
     el('button', { textContent: '←', title: 'Move earlier', ariaLabel: 'Move earlier', onclick: () => setOrder(moved(order(), k, order().indexOf(k) - 1)) }),
-    el('button', { textContent: '→', title: 'Move later', ariaLabel: 'Move later', onclick: () => setOrder(moved(order(), k, order().indexOf(k) + 1)) })))
-  //  a right-click starts arranging, but not on a link or a control, whose
-  //  own menu the browser keeps
+    el('button', { textContent: '→', title: 'Move later', ariaLabel: 'Move later', onclick: () => setOrder(moved(order(), k, order().indexOf(k) + 1)) }),
+    el('button', { textContent: '×', title: 'Take it off the page', ariaLabel: `Take ${NAMES[k]} off the page`, className: 'remove', onclick: () => setHidden(hidden().add(k)) })))
   c.addEventListener('contextmenu', (e) => {
-    if (document.body.classList.contains('arranging') || e.target.closest('a, button, input')) return
+    if (document.body.classList.contains('arranging') || e.target.closest(OWN_PRESS)) return
     e.preventDefault()
     arranging(true)
   })
-  let hold = null
-  c.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.target.closest('a, button, input')) return
-    const [x, y] = [e.clientX, e.clientY]
-    hold = setTimeout(() => arranging(true), 600)
-    const off = (m) => { if (!m || Math.hypot(m.clientX - x, m.clientY - y) > 8) { clearTimeout(hold); removeEventListener('pointermove', off); removeEventListener('pointerup', end) } }
-    const end = () => off(null)
-    addEventListener('pointermove', off)
-    addEventListener('pointerup', end)
-  })
-  c.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('text/plain', k)
-    e.dataTransfer.effectAllowed = 'move'
-    c.classList.add('held')
-  })
-  c.addEventListener('dragend', () => { for (const x of cards()) x.classList.remove('held', 'over') })
-  c.addEventListener('dragover', (e) => { if (document.body.classList.contains('arranging')) { e.preventDefault(); c.classList.add('over') } })
-  c.addEventListener('dragleave', () => c.classList.remove('over'))
-  c.addEventListener('drop', (e) => {
-    e.preventDefault()
-    c.classList.remove('over')
-    const from = e.dataTransfer.getData('text/plain')
-    if (from && from !== k) setOrder(moved(order(), from, order().indexOf(k)))
-  })
 }
+
+let drag = null
+let hold = null
+let over = null
+
+//  The card under a point, the one being dragged aside.
+const cardAt = (x, y) => { const n = document.elementFromPoint(x, y); return n && n.closest('[data-card]') }
+
+function lift() {
+  drag.live = true
+  drag.card.classList.add('held')
+  document.body.classList.add('dragging')
+  getSelection().removeAllRanges()
+}
+
+function settle() {
+  clearTimeout(hold)
+  if (drag) { drag.card.classList.remove('held'); drag.card.style.transform = '' }
+  if (over) over.classList.remove('over')
+  document.body.classList.remove('dragging')
+  drag = null
+  over = null
+}
+
+addEventListener('pointerdown', (e) => {
+  const card = e.target.closest('[data-card]')
+  if (!card || e.button !== 0 || e.target.closest(OWN_PRESS)) return
+  drag = { card, key: card.dataset.card, x0: e.clientX, y0: e.clientY, id: e.pointerId, live: false }
+  hold = setTimeout(() => { if (drag && !drag.live) { arranging(true); lift() } }, 600)
+})
+
+addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return
+  const dx = e.clientX - drag.x0
+  const dy = e.clientY - drag.y0
+  if (!drag.live) {
+    if (Math.hypot(dx, dy) < 6) return
+    clearTimeout(hold)
+    lift()
+  }
+  drag.card.style.transform = `translate(${dx}px, ${dy}px)`
+  const t = cardAt(e.clientX, e.clientY)
+  const next = t && t !== drag.card ? t : null
+  if (next !== over) {
+    if (over) over.classList.remove('over')
+    if (next) next.classList.add('over')
+    over = next
+  }
+})
+
+addEventListener('pointerup', (e) => {
+  if (!drag || e.pointerId !== drag.id) return settle()
+  const { key, live } = drag
+  const t = live && over
+  settle()
+  if (t) setOrder(moved(order(), key, order().indexOf(t.dataset.card)))
+})
+addEventListener('pointercancel', settle)
 
 $('done').addEventListener('click', () => arranging(false))
 addEventListener('keydown', (e) => { if (e.key === 'Escape') arranging(false) })

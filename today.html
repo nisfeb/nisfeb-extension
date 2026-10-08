@@ -75,8 +75,13 @@
     /* arranging, as Talon's: a long press or a right-click on any card
        starts it, cards are dragged to their places, Done ends it */
     body.arranging .panel { outline: 1px solid var(--line); cursor: grab; user-select: none; }
-    body.arranging .panel.held { outline-color: var(--accent); opacity: .6; }
-    body.arranging .panel.over { outline: 2px solid var(--accent); }
+    body.dragging { user-select: none; cursor: grabbing; }
+    .panel.gone { display: none; }
+    .addcards { display: flex; gap: 6px; flex-wrap: wrap; }
+    .addcards button { padding: 4px 10px; font-size: 12px; }
+    .move button.remove { color: var(--error); }
+    .panel.held { pointer-events: none; z-index: 5; outline: 1px solid var(--accent); box-shadow: 0 8px 24px rgb(0 0 0 / .25); transition: none; }
+    .panel.over { outline: 2px solid var(--accent); }
     .move { display: none; position: absolute; top: 8px; right: 8px; gap: 4px; z-index: 1; }
     body.arranging .move { display: flex; }
     .move button { padding: 2px 8px; font-size: 12px; }
@@ -98,6 +103,7 @@
     <h1 id="hello"></h1>
     <span id="who"><span class="dot" id="dot"></span><span id="whotext"></span></span>
     <span class="grow"></span>
+    <span id="addcards" class="addcards" hidden></span>
     <button class="text" id="done" hidden>Done</button>
     <button class="text" id="opts">Options</button>
   </header>

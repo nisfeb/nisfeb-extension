@@ -9,7 +9,7 @@ import {
 import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
 } from './lib/today.js'
-import { lookOf, wantsProfile, profileHex, fontOf, CACHE, fontKey } from './lib/theme.js'
+import { lookOf, profileHex, nicknameOf, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
 import {
   MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, eventOf, eventLines, windowOf, addDays,
@@ -157,8 +157,8 @@ async function dayCalendar(s, prev) {
   return { zone, zoneAt: known ? prev.zoneAt : now, rows: calRows((await s.calendarWindow(from, to)).rows) }
 }
 
-//  Talon's theme and accent, from %settings, and the profile colour only
-//  when the accent asks for it: scries, no event on the ship. A 404 is a
+//  Talon's theme, accent, font and naming, from %settings, and the
+//  owner's own contact: two scries, no event on the ship. A 404 is a
 //  ship with no Talon settings, the built-in look; any other failure
 //  keeps the look last read. A failed profile read keeps the last colour.
 async function dayLook(s, prev) {
@@ -169,7 +169,11 @@ async function dayLook(s, prev) {
     if (!(e instanceof ApiError && e.status === 404)) throw e
   }
   const look = lookOf(bucket)
-  if (wantsProfile(look.accent)) look.profile = profileHex(await s.scry('contacts', '/v1/self').catch(() => null)) ?? (prev && prev.profile) ?? null
+  //  the owner's own contact: the nickname the greeting uses, and the
+  //  colour a profile accent takes. A failed read keeps the last.
+  const self = await s.scry('contacts', '/v1/self').catch(() => null)
+  look.profile = profileHex(self) ?? (self ? null : prev && prev.profile) ?? null
+  look.nickname = self ? nicknameOf(self) : (prev && prev.nickname) || null
   return look
 }
 

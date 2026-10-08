@@ -41,7 +41,7 @@ Click the nisfeb button, then **Today**. The page shows Talon's sky clock, then 
 
 The **Assistant** card is a box for asking about your day or saying what to do, answered by Armillary's model with your calendar and Orrery as its tools. Anything it would write (an event, a task, words for Orrery) is shown first and runs only when you press **Do it**. It needs an Armillary inference key on your ship, like **Ask**, and the model chosen for Ask in Options must be one that can call tools.
 
-To arrange the cards, right-click or long-press any of them, as in Talon. Drag a card onto the place it should take, or use its arrows, then press **Done**.
+To arrange the cards, press and drag one onto the place it should take. A long press or a right-click on a card starts arranging, as in Talon: arrows step a card, **×** takes it off the page, the header offers back the cards taken off, and **Done** ends it.
 
 Everything the page shows is set in **Options**, under **The day page**:
 
