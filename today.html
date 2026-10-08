@@ -90,12 +90,10 @@
     .talk .me { align-self: flex-end; background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 12px 12px 2px 12px; padding: 6px 10px; max-width: 85%; white-space: pre-wrap; font-size: 13px; }
     .talk .it { white-space: pre-wrap; font-size: 13px; line-height: 19px; }
     .talk .note { color: var(--muted); font-size: 12px; }
-    .ask { display: flex; gap: 8px; padding: 8px 14px 4px; }
-    .ask input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--outline); border-radius: 16px; padding: 6px 12px; }
     .confirm { margin: 4px 14px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; font-size: 13px; }
     .confirm div { display: flex; gap: 8px; margin-top: 6px; }
     button.primary { background: var(--accent); color: var(--on-accent); border: 0; font-weight: 500; }
-    /* the search box: Brave Search, and Ask Brave's Deep Research */
+    /* the bar: Brave Search, or the assistant */
     .searchbar { max-width: 72rem; margin: 0 auto 14px; display: flex; gap: 8px; }
     .searchbar input { flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--text); background: color-mix(in srgb, var(--raised) 30%, var(--bg)); border: 1px solid var(--line); border-radius: 22px; padding: 10px 18px; }
     .searchbar input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
@@ -114,9 +112,9 @@
   </header>
 
   <form class="searchbar" id="searchform" role="search" autocomplete="off">
-    <input id="sq" type="search" placeholder="Search with Brave, or research a question" aria-label="Search with Brave">
+    <input id="sq" type="search" placeholder="Search with Brave, or ask your assistant" aria-label="Search with Brave, or ask your assistant">
     <button class="primary">Search</button>
-    <button type="button" id="research" title="Ask Brave's Deep Research, with these words">Research</button>
+    <button type="button" id="toassist" title="Ask your assistant, which knows your calendar and orrery">Assistant</button>
   </form>
 
   <main id="grid">
@@ -133,10 +131,6 @@
       <hr>
       <div class="talk" id="talk" aria-live="polite"></div>
       <div class="confirm" id="confirm" hidden><span id="ctext"></span><div><button class="primary" id="cyes">Do it</button><button id="cno">Don't</button></div></div>
-      <form class="ask" id="askform" autocomplete="off">
-        <input id="askq" placeholder="Ask about your day, or say what to do" aria-label="Ask the assistant">
-        <button class="primary" id="asksend">Send</button>
-      </form>
     </section>
     <section class="panel" id="cal" data-card="cal">
       <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/></svg><span>Today</span><a data-app="/apps/calendar/">Calendar</a></h2>

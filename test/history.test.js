@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { hostOf, parseExclude, excluded, digestOf, windowFrom, MAX_WINDOW_MS } from '../lib/history.js'
-import { searchUrl, researchUrl } from '../lib/today.js'
+import { searchUrl } from '../lib/today.js'
 
 test('sites: http(s) only, without www', () => {
   assert.equal(hostOf('https://www.GitHub.com/nisfeb/talon?x=1'), 'github.com')
@@ -51,7 +51,6 @@ test('the window: from the last digest, an hour the first time, six hours at mos
   assert.equal(windowFrom(now + 5000, now), now - 3600000, 'a clock that went back')
 })
 
-test('the search box: Brave Search, and Ask Brave\'s Deep Research', () => {
-  assert.equal(searchUrl(' lisbon flights '), 'https://search.brave.com/search?q=lisbon%20flights')
-  assert.equal(researchUrl('history of urbit & azimuth'), 'https://search.brave.com/ask?q=history%20of%20urbit%20%26%20azimuth&enable_research=true')
+test('the bar searches Brave Search', () => {
+  assert.equal(searchUrl(' lisbon flights & hotels '), 'https://search.brave.com/search?q=lisbon%20flights%20%26%20hotels')
 })

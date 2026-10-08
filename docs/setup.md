@@ -39,9 +39,9 @@ The code is sent once to the ship's own login form and never stored. The browser
 
 Click the nisfeb button, then **Today**. The page shows Talon's sky clock, then today's events, Orrery's open actions and its spend this month, unread mail and your Armillary balance. A card for an app your ship does not have says so, and the others still show. The page wears your Talon theme if you have a custom one.
 
-The search box at the top searches Brave Search when you press Enter; **Research** starts Ask Brave's Deep Research with the same words.
+The bar at the top searches Brave Search when you press Enter, and **Assistant** asks your assistant instead.
 
-The **Assistant** card is a box for asking about your day or saying what to do, answered by Armillary's model with your calendar and Orrery as its tools. Anything it would write (an event, a task, words for Orrery) is shown first and runs only when you press **Do it**. It needs an Armillary inference key on your ship, like **Ask**, and the model chosen for Ask in Options must be one that can call tools.
+The **Assistant** card shows the answers to what you ask with the bar's **Assistant** button, from Armillary's model with your calendar and Orrery as its tools. Anything it would write (an event, a task, words for Orrery) is shown first and runs only when you press **Do it**. It needs an Armillary inference key on your ship, like **Ask**, and the model chosen for Ask in Options must be one that can call tools.
 
 To arrange the cards, press and drag one onto the place it should take. A long press or a right-click on a card starts arranging, as in Talon: arrows step a card, **×** takes it off the page, the header offers back the cards taken off, and **Done** ends it.
 
