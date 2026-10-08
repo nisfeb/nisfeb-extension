@@ -17,6 +17,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |
 | `lib/history.js` | The hourly browsing digest for orrery: sites, page counts and titles from `chrome.history`, the owner's exclusions, the window it covers. |
 | `lib/calendar.js` | The calendar's write bodies as Talon builds them (`CalendarEdit.kt`: add, edit, delete, skip one occurrence, done), with Talon's tests ported in `test/calendar.test.js`. |
+| `lib/leo.js` | Brave Leo's Bring your own model values from the ship's Armillary lease, or why not (Talon's `BraveLeo.kt`). The key never passes through it, only its last four. |
 | `lib/agent.js` | The day page's assistant: Talon's prompt rules, its tools (names, words, arguments from `AssistantActions.kt` and `OrreryTools.kt`), the writes that wait for a yes, and how each answer is told to the model. The loop is in `background.js`. |
 | `sky-dial.js` | Draws the sky clock on a canvas, with its readout as text. |
 | `theme-boot.js` | Paints the last look before the page's module loads. A plain script, since an extension page may run no inline one. |

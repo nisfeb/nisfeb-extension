@@ -7,6 +7,7 @@ import { normaliseOrigin, patternFor } from './lib/ship.js'
 import { lookSaid, CACHE, BG_KEY } from './lib/theme.js'
 import { coordsOf } from './lib/sky.js'
 import { parseExclude } from './lib/history.js'
+import { LEO_STEPS, LEO_KEY_NOTE } from './lib/leo.js'
 
 const $ = (id) => document.getElementById(id)
 const say = (text, bad = false) => {
@@ -216,6 +217,60 @@ $('histnow').addEventListener('click', async () => {
 })
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && ('historySent' in changes || 'historyDigest' in changes)) histShow() })
 histShow()
+
+//  ── Brave Leo: its Bring your own model form, to paste ───────────────
+//
+//  Brave only: Chrome has no Leo. Talon's "Use in Brave Leo", as it is.
+//  The key comes from the worker only when its copy button is pressed,
+//  straight to the clipboard; it is never shown or kept here.
+
+const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids.filter(Boolean)); return n }
+const note = (text) => el('p', { className: 'note', textContent: text })
+let leoModel = null
+
+function leoField(name, shown, copy, extra = null) {
+  const said = el('span', { className: 'note' })
+  return el('div', { className: 'leofield' },
+    el('div', {}, el('strong', { textContent: name }), el('code', { textContent: shown })),
+    extra,
+    el('button', {
+      textContent: 'Copy',
+      onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(await copy())
+          said.textContent = 'Copied.'
+        } catch (e) { said.textContent = `Not copied: ${e.message || e}` }
+      },
+    }), said)
+}
+
+async function leoShow() {
+  $('leobox').replaceChildren(note('Asking your ship for its Armillary settings…'))
+  const r = await chrome.runtime.sendMessage({ kind: 'leoSetup', model: leoModel })
+  if (!r.ok) { $('leobox').replaceChildren(note(`Your ship did not answer for Leo: ${r.error}`)); return }
+  if (r.cannot) { $('leobox').replaceChildren(note(r.cannot)); return }
+  const s = r.ready
+  const pick = s.models.length > 1 && el('select', {
+    ariaLabel: 'Another model',
+    onchange: (e) => { leoModel = e.target.value; leoShow() },
+  }, ...s.models.map((m) => el('option', { value: m, textContent: m, selected: m === s.model })))
+  $('leobox').replaceChildren(
+    note(LEO_STEPS),
+    leoField('Label', s.label, async () => s.label),
+    leoField('Model request name', s.model, async () => s.model, pick),
+    leoField('Server endpoint', s.endpoint, async () => s.endpoint),
+    leoField('API Key', '\u2022'.repeat(8) + s.keyTail, async () => {
+      const k = await chrome.runtime.sendMessage({ kind: 'leoKey' })
+      if (!k.ok) throw new Error(k.error)
+      return k.key
+    }),
+    note(LEO_KEY_NOTE),
+    el('button', { textContent: 'Open Leo\'s settings', onclick: () => chrome.tabs.create({ url: 'chrome://settings/leo-ai' }) }),
+  )
+}
+
+$('leo').hidden = !navigator.brave
+$('leoshow').addEventListener('click', leoShow)
 
 day = await chrome.storage.local.get(DAYKEYS)
 dayShow()

@@ -12,6 +12,7 @@ import {
 import { lookOf, profileHex, nicknameOf, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
 import { digestOf, windowFrom, EVERY_MIN } from './lib/history.js'
+import { leoSetup } from './lib/leo.js'
 import {
   MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, createOf, createDraft, updateDraft, eventLines, windowOf, addDays,
   foundLines, bodyLines, instructedText, instructRefusal, clip, messagesFor,
@@ -721,6 +722,19 @@ const actions = {
   inference: () => call(async (s) => {
     const [inf, acct] = await Promise.all([s.inference(), s.account().catch(() => null)])
     return { base: inf.base_url, mode: inf.mode, models: inf.models || [], balance: acct ? acct.balance : null }
+  }),
+
+  //  Brave Leo's form, for Options: read fresh, the key masked. The key
+  //  itself only on leoKey, when the owner presses its copy button.
+  leoSetup: ({ model }) => call(async (s) => {
+    const [inf, acct] = await Promise.all([s.inference(), s.account().catch(() => null)])
+    return leoSetup(inf, Boolean(acct && acct.lease && acct.lease.disabled === true), model)
+  }),
+  leoKey: () => call(async (s) => {
+    const inf = await s.inference()
+    const r = leoSetup(inf, false, null)
+    if (!r.ready) throw new Error(r.cannot)
+    return { key: String(inf.key).trim() }
   }),
 
   ask: ({ model, prompt, text }) => call(async (s) => {
