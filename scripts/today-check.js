@@ -74,6 +74,7 @@ const fixtures = {
     accent: JSON.stringify({ enabled: false, mode: 'Brand' }),
     fonts: JSON.stringify({ family: 'Test', fonts: [{ id: FONT_ID, family: 'Test', weight: 400, italic: false }], removed: [] }),
   } },
+  '/~/scry/contacts/v1/self.json': { nickname: { type: 'text', value: 'Zed' }, color: { type: 'tint', value: '0x0' } },
   '/apps/armillary/api/account': { ship: '~zod', balance: 12345678, keys_pending: [{ secret: 'sk-or-SECRET' }], vendor: '~wex', self: '~zod', stale: 3 },
 }
 
@@ -273,7 +274,8 @@ try {
   const prop = (k, s = t.sessionId) => evaluate(`document.documentElement.style.getPropertyValue('${k}')`, s)
   const until = async (k, want, s = t.sessionId) => { for (let i = 0; i < 25 && await prop(k, s) !== want; i++) await new Promise((r) => setTimeout(r, 200)); return prop(k, s) }
   check('look: read at once when the page has none', await until('--bg', '#14141c') === '#14141c' && await prop('color-scheme') === 'dark', await prop('--bg'))
-  check('look: only the look is read, the fresh cards are not', JSON.stringify(asked.sort()) === JSON.stringify(['GET /~/scry/settings/bucket/talon/ui-prefs.json', `GET /grubbery/api/file/talon/fonts/${FONT_ID}.font`].sort()), asked.join('\n'))
+  check('look: only the look is read, the fresh cards are not', JSON.stringify(asked.sort()) === JSON.stringify(['GET /~/scry/settings/bucket/talon/ui-prefs.json', 'GET /~/scry/contacts/v1/self.json', `GET /grubbery/api/file/talon/fonts/${FONT_ID}.font`].sort()), asked.join('\n'))
+  check('look: the greeting names the owner as Talon does, by nickname', (await textOf(t.sessionId, [', Zed'])).includes(', Zed'))
   check('look: Talon\'s font is the page\'s', await prop('--font') === '"Test", sans-serif', await prop('--font'))
   check('look: the font\'s file is kept, checked against its name', await evaluate(`caches.open('nisfeb-day').then((c) => c.match('https://day.nisfeb.invalid/fonts/${FONT_ID}')).then(Boolean)`, t.sessionId) === true)
   check('look: kept for the next tab\'s first paint', (await evaluate('localStorage.dayLook', t.sessionId) || '').includes('#14141c'))
@@ -311,6 +313,7 @@ try {
     'GET /apps/orrery/api/actions?status=open',
     'GET /apps/orrery/api/generator/last',
     'GET /~/scry/settings/bucket/talon/ui-prefs.json',
+    'GET /~/scry/contacts/v1/self.json',
     'GET /apps/auspex/api/inbox?view=inbox&limit=20',
     'GET /apps/armillary/api/account',
   ]
@@ -349,16 +352,20 @@ try {
   await evaluate("document.querySelector('#mail .move button').click()", t.sessionId)
   for (let i = 0; i < 20 && await orderOf('mail') !== 2; i++) await new Promise((r) => setTimeout(r, 100))
   check('arranging: a card moved a step earlier', await orderOf('mail') === 2 && await orderOf('actions') === 3, `${await orderOf('mail')} ${await orderOf('actions')}`)
-  await evaluate(`(() => {
-    const dt = new DataTransfer()
-    document.getElementById('money').dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }))
-    document.getElementById('clock').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
-  })()`, t.sessionId)
-  for (let i = 0; i < 20 && await orderOf('money') !== 0; i++) await new Promise((r) => setTimeout(r, 100))
-  check('arranging: a card dropped on another takes its place', await orderOf('money') === 0 && await orderOf('clock') === 1)
   const t3 = await page(['Trip to Lisbon'])
-  check('arranging: the order is kept for a new tab', await orderOf('money', t3.sessionId) === 0 && await orderOf('mail', t3.sessionId) === 3)
+  check('arranging: the order is kept for a new tab', await orderOf('mail', t3.sessionId) === await orderOf('mail') && await orderOf('mail', t3.sessionId) === 2)
   await close(t3)
+  //  taken off the page, and put back, as on Talon's
+  await evaluate("document.querySelector('#mail .move .remove').click()", t.sessionId)
+  const gone = (k, s = t.sessionId) => evaluate(`document.getElementById('${k}').classList.contains('gone') && getComputedStyle(document.getElementById('${k}')).display === 'none'`, s)
+  for (let i = 0; i < 20 && !await gone('mail'); i++) await new Promise((r) => setTimeout(r, 100))
+  check('arranging: a card taken off the page goes, and is offered back', await gone('mail') && (await evaluate("document.getElementById('addcards').innerText", t.sessionId)).includes('+ Mail'))
+  const t5 = await page(['Trip to Lisbon'])
+  check('arranging: off the page in a new tab too', await gone('mail', t5.sessionId) === true)
+  await close(t5)
+  await evaluate("document.querySelector('#addcards button').click()", t.sessionId)
+  for (let i = 0; i < 20 && await gone('mail'); i++) await new Promise((r) => setTimeout(r, 100))
+  check('arranging: put back from the header', await gone('mail') === false && await evaluate("document.getElementById('addcards').hidden", t.sessionId) === true)
   await evaluate("document.getElementById('done').click()", t.sessionId)
   check('arranging: Done ends it', await evaluate("document.body.classList.contains('arranging')", t.sessionId) === false)
   if (process.env.SHOT) {
@@ -440,6 +447,57 @@ try {
   await evaluate("document.getElementById('anew').click()", t.sessionId)
   said2 = await waitTalk('Anything it would write waits for your yes')
   check('assistant: New clears it', !said2.includes('Answer Dana'), said2)
+
+  //  arranging by hand: real mouse input, as a person does it, not events
+  //  handed to the page (those passed while a real drag did nothing)
+  await evaluate("chrome.storage.local.remove('dayOrder')", ws1)
+  //  in front: a tab behind others gets each mouse event five seconds late
+  await cdp('Page.bringToFront', {}, t.sessionId)
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false }, t.sessionId)
+  await evaluate("document.getElementById('done').click(); window.scrollTo(0, 0)", t.sessionId)
+  await new Promise((r) => setTimeout(r, 400))
+  const centre = async (k) => JSON.parse(await evaluate(`(() => { const r = document.getElementById('${k}').getBoundingClientRect(); return JSON.stringify([Math.round(r.left + r.width / 2), Math.round(r.top + Math.min(r.height / 2, 60))]) })()`, t.sessionId))
+  const mouse = (type, [x, y], button = 'left', extra = {}) => cdp('Input.dispatchMouseEvent', { type, x, y, button, clickCount: 1, ...extra }, t.sessionId)
+  const arrangingNow = () => evaluate("document.body.classList.contains('arranging')", t.sessionId)
+  const orderNow = () => evaluate("JSON.stringify([...document.querySelectorAll('[data-card]')].sort((a, b) => a.style.order - b.style.order).map((c) => c.id))", t.sessionId)
+  const before0 = await orderNow()
+  await mouse('mousePressed', await centre('mail'), 'right')
+  await mouse('mouseReleased', await centre('mail'), 'right')
+  await new Promise((r) => setTimeout(r, 300))
+  check('arranging by hand: a real right-click on a card starts it', await arrangingNow() === true)
+  await evaluate("document.getElementById('done').click()", t.sessionId)
+  const drag = async (a, b) => {
+    await mouse('mousePressed', a)
+    for (let i = 1; i <= 12; i++) await mouse('mouseMoved', [Math.round(a[0] + (b[0] - a[0]) * i / 12), Math.round(a[1] + (b[1] - a[1]) * i / 12)], 'left', { buttons: 1 })
+    await mouse('mouseReleased', b)
+    await new Promise((r) => setTimeout(r, 400))
+  }
+  //  a click, no move: nothing moves and nothing starts
+  await mouse('mousePressed', await centre('cal'))
+  await mouse('mouseReleased', await centre('cal'))
+  await new Promise((r) => setTimeout(r, 300))
+  check('arranging by hand: a click moves nothing', await orderNow() === before0 && await arrangingNow() === false)
+  //  a press and drag, straight away
+  await drag(await centre('actions'), await centre('clock'))
+  const after0 = JSON.parse(await orderNow())
+  check('arranging by hand: a card pressed and dragged moves, without arranging first', after0.indexOf('actions') < after0.indexOf('clock') && await arrangingNow() === false, JSON.stringify(after0))
+  //  a long press, then on into a drag without letting go, as in Talon
+  const p1 = await centre('money')
+  const p2 = await centre('clock')
+  await mouse('mousePressed', p1)
+  await new Promise((r) => setTimeout(r, 900))
+  const held = await arrangingNow()
+  for (let i = 1; i <= 12; i++) await mouse('mouseMoved', [Math.round(p1[0] + (p2[0] - p1[0]) * i / 12), Math.round(p1[1] + (p2[1] - p1[1]) * i / 12)], 'left', { buttons: 1 })
+  await mouse('mouseReleased', p2)
+  await new Promise((r) => setTimeout(r, 600))
+  const after1 = await orderNow()
+  check('arranging by hand: a long press starts it', held === true)
+  check('arranging by hand: held on, the card drags to its place', after1 !== JSON.stringify(after0) && JSON.parse(after1).indexOf('money') < JSON.parse(after1).indexOf('clock'), `${before0} -> ${after1}`)
+  //  arranging already: a plain press and drag
+  await drag(await centre('mail'), await centre('cal'))
+  const after2 = await orderNow()
+  check('arranging by hand: arranging, a press and drag moves a card', after2 !== after1 && JSON.parse(after2).indexOf('mail') < JSON.parse(after2).indexOf('cal'), `${after1} -> ${after2}`)
+  await evaluate("document.getElementById('done').click()", t.sessionId)
 
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })

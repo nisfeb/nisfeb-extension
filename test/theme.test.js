@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { lerp, css, lum, themeVars, activeOf, accentOf, wantsProfile, profileHex, lookOf, lookVars, lookSaid, fontOf, fontStack, BUILT_IN, VARS } from '../lib/theme.js'
+import { lerp, css, lum, themeVars, activeOf, accentOf, wantsProfile, profileHex, lookOf, lookVars, lookSaid, fontOf, fontStack, nicknameOf, displayName, BUILT_IN, VARS } from '../lib/theme.js'
 
 //  Talon's ThemeSettings, as SettingsSyncImpl writes it: the value of
 //  each entry is the JSON as a string.
@@ -78,7 +78,7 @@ test('what the page sets, from the bucket the ship answers', () => {
   assert.equal(both['--on-accent'], '#ffffff')
   assert.equal(both['--bg'], '#14141c')
   //  an entry that is not JSON is no entry
-  assert.deepEqual(lookOf({ bucket: { themes: '{nope', accent: 'x' } }), { themes: null, accent: null, fonts: null })
+  assert.deepEqual(lookOf({ bucket: { themes: '{nope', accent: 'x' } }), { themes: null, accent: null, fonts: null, alwaysPatp: false })
 })
 
 test('light or dark, chosen here as Talon chooses it per device', () => {
@@ -123,4 +123,18 @@ test('Talon\'s font: the family chosen, its files, never a removed one', () => {
   assert.equal(lookVars(look)['--font'], '"Inter", sans-serif')
   assert.equal(lookVars(look, false)['--font'], undefined)
   assert.match(lookSaid({ ...look, at: Date.now() }), /Its font is Inter\./)
+})
+
+test('the owner\'s name, by Talon\'s rules: the nickname, or the @p when Talon says always', () => {
+  assert.equal(nicknameOf({ nickname: { type: 'text', value: ' Zed ' } }), 'Zed')
+  assert.equal(nicknameOf({ nickname: 'Zed' }), 'Zed')
+  assert.equal(nicknameOf({ nickname: { type: 'text', value: '' } }), null)
+  assert.equal(nicknameOf(null), null)
+  assert.equal(displayName('~zod', { nickname: 'Zed' }), 'Zed')
+  assert.equal(displayName('~zod', { nickname: null }), '~zod')
+  assert.equal(displayName('~zod', null), '~zod')
+  assert.equal(displayName('', { nickname: 'Zed' }), '')
+  const always = lookOf({ bucket: { 'always-patp': JSON.stringify({ enabled: true }) } })
+  assert.equal(always.alwaysPatp, true)
+  assert.equal(displayName('~zod', { ...always, nickname: 'Zed' }), '~zod')
 })
