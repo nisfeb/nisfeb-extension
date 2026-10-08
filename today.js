@@ -6,7 +6,7 @@
 //  never HTML: it is the ship's words, and other people's. Drawn as
 //  Talon's home page is (HomeScreen.kt); its settings live in Options.
 
-import { explain } from './lib/ship.js'
+import { explain, patternFor } from './lib/ship.js'
 import { agenda, money, due, ordered, moved } from './lib/today.js'
 import { lookVars, fontOf, VARS, CACHE, BG_KEY, fontKey } from './lib/theme.js'
 import { skyFor, placeKey } from './lib/sky.js'
@@ -15,7 +15,7 @@ import { drawDial } from './sky-dial.js'
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
 const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
-const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'dayMode', 'backgroundAt', 'place', 'weather', 'dayOrder']
+const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'dayMode', 'backgroundAt', 'place', 'weather', 'dayOrder', 'assistant']
 const SHOWN = 12
 
 let st = {}
@@ -251,6 +251,50 @@ async function background() {
   document.body.classList.toggle('pictured', Boolean(url))
 }
 
+//  ── the assistant ────────────────────────────────────────────────────
+//
+//  Talon's Assistant, run by the worker: this draws its history, the
+//  write waiting for a yes, and a box. The words are text, never HTML.
+
+function talk() {
+  const a = st.assistant || {}
+  const lines = (a.history || []).slice(-12).map((h) => el('div', { className: h.role === 'user' ? 'me' : 'it', textContent: h.text }))
+  if ((a.busy || a.pending) && a.asking) lines.push(el('div', { className: 'me', textContent: a.asking }))
+  if (a.busy) lines.push(el('div', { className: 'note', textContent: 'Thinking…' }))
+  if (a.error) lines.push(el('div', { className: 'note bad', textContent: `That did not go through: ${a.error}` }))
+  if (!lines.length) lines.push(el('div', { className: 'note', textContent: 'Ask about your day, your calendar or what orrery knows, or tell it what to add. Anything it would write waits for your yes.' }))
+  $('talk').replaceChildren(...lines)
+  $('talk').scrollTop = $('talk').scrollHeight
+  $('confirm').hidden = !a.pending
+  $('ctext').textContent = a.pending ? a.pending.text : ''
+  $('asksend').disabled = Boolean(a.busy || a.pending)
+  $('anew').hidden = !(a.history && a.history.length) || Boolean(a.busy)
+}
+
+//  The model's answers come from Armillary's endpoint, a third origin:
+//  the first question asks the browser for it under this click, as Ask
+//  does. Refused, the request still goes out where the endpoint allows.
+async function mayAsk() {
+  const inf = await ask({ kind: 'inference' })
+  if (!inf.ok) return inf
+  const origins = [patternFor(inf.base)]
+  try { if (!(await chrome.permissions.contains({ origins }))) await chrome.permissions.request({ origins }) } catch { /* CORS may still allow it */ }
+  return { ok: true }
+}
+
+$('askform').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const text = $('askq').value.trim()
+  if (!text || (st.assistant && (st.assistant.busy || st.assistant.pending))) return
+  const ok = await mayAsk()
+  if (!ok.ok) { st.assistant = { ...(st.assistant || {}), error: explain('Armillary', ok.error, ship()) }; talk(); return }
+  $('askq').value = ''
+  ask({ kind: 'assist', text }).catch(() => { /* the worker is reloading: its state says where it got to */ })
+})
+$('cyes').addEventListener('click', () => ask({ kind: 'assistAnswer', yes: true }).catch(() => {}))
+$('cno').addEventListener('click', () => ask({ kind: 'assistAnswer', yes: false }).catch(() => {}))
+$('anew').addEventListener('click', () => ask({ kind: 'assistReset' }).catch(() => {}))
+
 //  ── wiring ───────────────────────────────────────────────────────────
 
 function render() {
@@ -260,8 +304,9 @@ function render() {
   header(now)
   paintClock()
   $('none').hidden = Boolean(st.origin)
-  for (const k of Object.keys(APP)) $(k).hidden = !st.origin
+  for (const k of [...Object.keys(APP), 'assistant']) $(k).hidden = !st.origin
   if (!st.origin) return
+  talk()
   for (const a of document.querySelectorAll('h2 a')) a.href = `${st.origin}${a.dataset.app}`
   const snap = snapshot()
   for (const k of Object.keys(APP)) card(k, snap && snap.cards && snap.cards[k], now)

@@ -4,13 +4,17 @@
 
 import {
   Ship, ApiError, UnreachableError, slug, stamp, quoted, clipMarkdown,
-  localDate, escapeXml, complete, readKey, chatPoke, chatStory, isWhom,
+  localDate, escapeXml, complete, completion, readKey, chatPoke, chatStory, isWhom, calendarPoke, capBytes,
 } from './lib/ship.js'
 import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
 } from './lib/today.js'
 import { lookOf, wantsProfile, profileHex, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
+import {
+  MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, eventOf, eventLines, windowOf, addDays,
+  foundLines, bodyLines, instructedText, instructRefusal, clip, messagesFor,
+} from './lib/agent.js'
 
 //  Chrome groups several items of one extension under its name, so these
 //  read as Nisfeb > Send to Auspex and so on.
@@ -294,6 +298,155 @@ async function places(q) {
   }
 }
 
+//  ── the day page's assistant ─────────────────────────────────────────
+//
+//  Talon's AgentLoop, run here: the model (Armillary's, as Ask uses it)
+//  answers or asks for tools; reads run at once, and a write waits for
+//  the owner's yes on the page, the turn kept in storage.local meanwhile
+//  so the worker may sleep. What the owner sees is `assistant`: the
+//  history (words only, the last 50), the write waiting, whether a turn
+//  is running, and what went wrong.
+
+const HISTORY = 50
+const getAssistant = async () => ({ history: [], pending: null, busy: false, error: '', ...((await chrome.storage.local.get('assistant')).assistant || {}) })
+const putAssistant = (a) => chrome.storage.local.set({ assistant: a })
+
+//  The calendar's zone, from the day page's last read where it has one.
+async function calendarZone() {
+  const { today: snap } = await chrome.storage.local.get('today')
+  const z = snap && snap.cards && snap.cards.cal && snap.cards.cal.data && snap.cards.cal.data.zone
+  return z || Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
+//  One tool, read or (once said yes to) write, answered in words for the
+//  model. A tool's failure is words too: the model decides what next.
+async function runTool(s, name, a, zone) {
+  const said = (e) => (e instanceof ApiError && e.signedOut ? 'The ship says the owner is signed out.' : e.message || String(e))
+  try {
+    if (name === 'list_events') {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(Date.now())
+      const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '')
+      if ((a.from && !ok(a.from)) || (a.to && !ok(a.to))) return 'Error: dates are YYYY-MM-DD.'
+      const from = a.from || today
+      const to = a.to || addDays(from, 7)
+      if (to < from) return 'Error: to is before from.'
+      const w = windowOf(from, to)
+      return eventLines((await s.calendarWindow(w.from, w.to)).rows, zone, from, to)
+    }
+    if (name === 'create_event' || name === 'create_task') {
+      await s.addEvent(calendarPoke(eventOf(name, a)))
+      return name === 'create_task' ? `Added task "${a.name}"${a.due ? ` due ${a.due}` : ''}.` : `Added "${a.name}" on ${a.date}${a.time ? ` at ${a.time}` : ''}.`
+    }
+    if (name === 'orrery_brief') {
+      const b = await s.json('/apps/orrery/api/brief/last').catch((e) => { if (e instanceof ApiError && e.status === 404) return null; throw e })
+      return b && b.text ? `The brief for ${b.day || 'today'}:\n${clip(String(b.text), STATE_CHARS)}` : 'Orrery has written no brief yet.'
+    }
+    if (name === 'orrery_find') {
+      if (!a.name) return 'Error: name is required.'
+      return foundLines(a.name, await s.json(`/apps/orrery/api/resolve?q=${encodeURIComponent(a.name)}`))
+    }
+    if (name === 'orrery_read') {
+      if (!a.body) return clip(JSON.stringify(await s.json('/apps/orrery/api/state?brief=1')), STATE_CHARS)
+      if (!/^[a-z0-9-]+\/[^/\s?#]+$/i.test(a.body)) return 'Error: body is an id like person/alice.'
+      return bodyLines(a.body, await s.json(`/apps/orrery/api/body/${a.body}`))
+    }
+    if (name === 'orrery_instruct') {
+      try {
+        return instructedText(await s.post('/apps/orrery/api/instruct', { text: capBytes(String(a.text || ''), 2000), apply: false }))
+      } catch (e) {
+        return e instanceof ApiError ? instructRefusal(e.status, e.message) : said(e)
+      }
+    }
+    return `Error: there is no tool called ${name}.`
+  } catch (e) {
+    return `That failed: ${said(e)}`
+  }
+}
+
+//  Run the turn on from where it stands: the calls still to make from
+//  the model's last step, then more steps, until it answers in words, a
+//  write needs the owner, or the steps run out.
+async function carry(turn, rest, steps) {
+  const { origin, model } = await state()
+  const s = new Ship(origin)
+  const zone = await calendarZone()
+  let inf = null
+  for (;;) {
+    while (rest.length) {
+      const call = rest.shift()
+      const name = call.function && call.function.name
+      const a = argsOf(call)
+      let content
+      if (WRITES.has(name)) {
+        const text = proposal(name, a)
+        if (text) {
+          const st = await getAssistant()
+          await putAssistant({ ...st, busy: false, pending: { call, text, turn, rest, steps } })
+          return
+        }
+        content = `Error: the arguments for ${name} are not usable; see its description.`
+      } else {
+        content = a ? await runTool(s, name, a, zone) : 'Error: the arguments were not JSON.'
+      }
+      turn.push({ role: 'tool', tool_call_id: call.id, content })
+    }
+    if (steps >= MAX_STEPS) return finish(turn, 'I stopped there: that took more steps than one question may.')
+    if (!inf) inf = await s.inference()
+    const m = model || (inf.models && inf.models[0])
+    if (!m) throw new Error('no model: pick one for Ask in Options')
+    const st = await getAssistant()
+    const msg = await completion(inf, m, messagesFor(st.history, turn, Date.now(), zone), TOOLS)
+    steps++
+    turn.push({ role: 'assistant', content: msg.content ?? null, ...(msg.tool_calls ? { tool_calls: msg.tool_calls } : {}) })
+    if (!msg.tool_calls || !msg.tool_calls.length) return finish(turn, typeof msg.content === 'string' ? msg.content : '')
+    rest = [...msg.tool_calls]
+  }
+}
+
+//  The turn done: the owner's words and the answer go into the history.
+async function finish(turn, answer) {
+  const st = await getAssistant()
+  const asked = turn[0] && turn[0].content
+  const history = [...st.history, { role: 'user', text: asked, at: Date.now() }, { role: 'assistant', text: answer || '(no answer)', at: Date.now() }].slice(-HISTORY)
+  await putAssistant({ ...st, history, pending: null, busy: false, error: '', asking: '' })
+}
+
+//  A failure mid-turn: said on the page, the owner's words kept for
+//  another try, nothing half written into the history.
+async function failed(e) {
+  const st = await getAssistant()
+  await putAssistant({ ...st, pending: null, busy: false, error: e.message || String(e) })
+}
+
+let assistRun = null
+async function assist(text) {
+  const st = await getAssistant()
+  if (assistRun || st.busy || st.pending) return { ok: false, error: 'busy' }
+  if (!String(text || '').trim()) return { ok: false, error: 'nothing asked' }
+  await putAssistant({ ...st, busy: true, error: '', asking: text })
+  assistRun = carry([{ role: 'user', content: text }], [], 0).catch(failed).finally(() => { assistRun = null })
+  await assistRun
+  return { ok: true }
+}
+
+//  The owner's yes or no to the write waiting. No is said to the model,
+//  which goes on without it.
+async function assistAnswer(yes) {
+  const st = await getAssistant()
+  const p = st.pending
+  if (!p || assistRun) return { ok: false, error: 'nothing waiting' }
+  await putAssistant({ ...st, pending: null, busy: true })
+  assistRun = (async () => {
+    const { origin } = await state()
+    const name = p.call.function.name
+    const content = yes ? await runTool(new Ship(origin), name, argsOf(p.call), await calendarZone()) : 'The owner declined; it was not done.'
+    p.turn.push({ role: 'tool', tool_call_id: p.call.id, content })
+    await carry(p.turn, p.rest, p.steps)
+  })().catch(failed).finally(() => { assistRun = null })
+  await assistRun
+  return { ok: true }
+}
+
 //  An earlier build filed each page as a note action, which the ship only
 //  listed. Dismiss the ones still open, once, so they leave the inbox.
 async function migrateNotes() {
@@ -384,6 +537,13 @@ const actions = {
   }),
 
   today: () => today(),
+  assist: (m) => assist(String(m.text || '')),
+  assistAnswer: (m) => assistAnswer(m.yes === true),
+  assistReset: async () => {
+    if (assistRun) return { ok: false, error: 'busy' }
+    await chrome.storage.local.remove('assistant')
+    return { ok: true }
+  },
   //  Options, when it opens: one scry, so what it shows is current
   look: async () => {
     const { origin } = await chrome.storage.local.get('origin')
