@@ -22,6 +22,10 @@
 //    arranging       a right-click starts it, a card moved a step and one
 //                    dropped on another, the order kept for a new tab
 //    no settings     the page carries none: they are in Options
+//    the assistant   a question answered from orrery's brief by a model
+//                    that asked for it; a write shown and run only on
+//                    yes, with the calendar's poke; a no said to the model;
+//                    a model that fails; the history kept, and cleared
 //    the sky clock   drawn with no ship at all, asking for a location and
 //                    fetching no weather without one; a stored forecast
 //                    drawn on it, not fetched again while fresh
@@ -48,6 +52,10 @@ const todayUtc = Date.UTC(y, m - 1, d)
 const asked = []
 let mode = 'ok'
 let slow = 0
+//  the stand-in model: each completion takes the next scripted message
+const script = []
+const completions = []
+const pokes = []
 
 //  a font file Talon installed, named by its sha256 as grubbery keeps it
 const FONT = Buffer.from('not really a font, but its own hash')
@@ -86,6 +94,20 @@ const server = createServer((req, res) => {
     if (path.startsWith('/~/scry/settings/')) return res.writeHead(404).end('<html>no</html>')
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
+  }
+  if (path === '/apps/armillary/api/inference') return json(res, { base_url: `http://${req.headers.host}/v1`, key: 'test-key', mode: 'lease', models: ['test-model'] })
+  if (path === '/apps/orrery/api/brief/last') return json(res, { day: '2026-10-08', at: now, text: 'Dana needs an answer about the lease by Friday.' })
+  if (req.method === 'POST' && (path === '/v1/chat/completions' || path.startsWith('/grubbery/api/poke/'))) {
+    let body = ''
+    req.on('data', (c) => { body += c })
+    req.on('end', () => {
+      if (path.startsWith('/grubbery/api/poke/')) { pokes.push({ path, body: JSON.parse(body) }); return res.writeHead(200).end('') }
+      completions.push({ auth: req.headers.authorization, body: JSON.parse(body) })
+      const next = script.shift()
+      if (next === 500) return res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: 'the model fell over' } }))
+      json(res, { choices: [{ message: next || { role: 'assistant', content: 'ok' } }] })
+    })
+    return
   }
   if (path === `/grubbery/api/file/talon/fonts/${FONT_ID}.font`) return res.writeHead(200, { 'content-type': 'application/octet-stream' }).end(FONT)
   if (path in fixtures) return setTimeout(() => json(res, fixtures[path]), path.startsWith('/apps/armillary/') ? slow : 0)
@@ -368,6 +390,56 @@ try {
   await evaluate("document.getElementById('where').click()", t.sessionId)
   await new Promise((r) => setTimeout(r, 800))
   check('clock: "Set a location" opens Options at the place', (await cdp('Target.getTargets')).targetInfos.some((x) => x.url.endsWith('/options.html#clock')))
+
+  //  the assistant: a read, a write on yes, a no, a failure, the history
+  const call = (id, name, args) => ({ role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }] })
+  const askIt = (q) => evaluate(`(() => { document.getElementById('askq').value = ${JSON.stringify(q)}; document.getElementById('askform').requestSubmit() })()`, t.sessionId)
+  const talkText = () => evaluate("document.getElementById('assistant').innerText", t.sessionId)
+  const waitTalk = async (want) => { for (let i = 0; i < 50 && !(await talkText()).includes(want); i++) await new Promise((r) => setTimeout(r, 200)); return talkText() }
+  script.push(call('c1', 'orrery_brief', {}), { role: 'assistant', content: 'Answer Dana about the lease; it is due Friday.' })
+  await askIt('what should I do today?')
+  let said2 = await waitTalk('Answer Dana')
+  check('assistant: a question answered from orrery\'s brief', said2.includes('what should I do today?') && said2.includes('Answer Dana about the lease'), said2)
+  const [first, second] = completions
+  check('assistant: the model is asked with Talon\'s tools, the key, and NOW', first && first.auth === 'Bearer test-key' && first.body.model === 'test-model' &&
+    first.body.tools.length === 7 && /NOW: \d{4}-\d{2}-\d{2} /.test(first.body.messages[0].content), JSON.stringify(first && first.body).slice(0, 400))
+  check('assistant: the brief goes back to the model as the tool\'s answer', second && second.body.messages.some((m) => m.role === 'tool' && m.tool_call_id === 'c1' && m.content.includes('Dana needs an answer')), JSON.stringify(second && second.body.messages).slice(-400))
+
+  script.push(call('c2', 'create_event', { name: 'Lunch with Tom', date: '2026-10-10', time: '12:30' }), { role: 'assistant', content: 'Lunch with Tom is on Saturday at 12:30.' })
+  await askIt('lunch with tom saturday')
+  said2 = await waitTalk('Do it')
+  check('assistant: a write is shown and waits for a yes', said2.includes('Add "Lunch with Tom" on 2026-10-10 at 12:30, 60 minutes to your calendar.') && pokes.length === 0 && !said2.includes('Thinking'), said2)
+  if (process.env.SHOT3) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false }, t.sessionId)
+    await evaluate("document.getElementById('assistant').scrollIntoView()", t.sessionId)
+    writeFileSync(process.env.SHOT3, Buffer.from((await cdp('Page.captureScreenshot', { format: 'png' }, t.sessionId)).data, 'base64'))
+  }
+  await evaluate("document.getElementById('cyes').click()", t.sessionId)
+  said2 = await waitTalk('is on Saturday')
+  const poke = pokes[0]
+  check('assistant: on yes, the calendar\'s add-event poke, then the answer', poke && poke.path === '/grubbery/api/poke/x/calendar.calendar?blot=/json' &&
+    poke.body.action === 'add-event' && poke.body.cat === 'timed' && poke.body.start_ms === Date.UTC(2026, 9, 10, 12, 30) && said2.includes('Lunch with Tom is on Saturday'), JSON.stringify(pokes))
+
+  pokes.length = 0
+  script.push(call('c3', 'create_task', { name: 'Pay the rent' }), { role: 'assistant', content: 'Fine, I left it off.' })
+  await askIt('remind me to pay the rent')
+  await waitTalk('Do it')
+  await evaluate("document.getElementById('cno').click()", t.sessionId)
+  said2 = await waitTalk('I left it off')
+  const last = completions.at(-1)
+  check('assistant: a no is said to the model and nothing is written', pokes.length === 0 && last.body.messages.some((m) => m.role === 'tool' && m.content.includes('declined')) && said2.includes('I left it off'), JSON.stringify(pokes))
+
+  script.push(500)
+  await askIt('and tomorrow?')
+  said2 = await waitTalk('did not go through')
+  check('assistant: a model that fails is said, and the box is free again', said2.includes('That did not go through: the model fell over') && await evaluate("!document.getElementById('asksend').disabled", t.sessionId), said2)
+
+  const t4 = await page(['Answer Dana'])
+  check('assistant: the history is there in a new tab', (await evaluate("document.getElementById('assistant').innerText", t4.sessionId)).includes('Lunch with Tom is on Saturday'))
+  await close(t4)
+  await evaluate("document.getElementById('anew').click()", t.sessionId)
+  said2 = await waitTalk('Anything it would write waits for your yes')
+  check('assistant: New clears it', !said2.includes('Answer Dana'), said2)
 
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })

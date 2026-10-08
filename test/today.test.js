@@ -264,8 +264,8 @@ test('spendOf: this month\'s spend, nothing yet in a new month, null with no rec
 
 test('ordered: the saved order first, new cards after, gone ones dropped', () => {
   assert.deepEqual(ordered(null), CARDS)
-  assert.deepEqual(ordered(['mail', 'clock']), ['mail', 'clock', 'cal', 'actions', 'money'])
-  assert.deepEqual(ordered(['chats', 'money', 'money']), ['money', 'clock', 'cal', 'actions', 'mail'])
+  assert.deepEqual(ordered(['mail', 'clock']), ['mail', 'clock', 'cal', 'actions', 'money', 'assistant'])
+  assert.deepEqual(ordered(['chats', 'money', 'money']), ['money', 'clock', 'cal', 'actions', 'mail', 'assistant'])
 })
 
 test('moved: dropped on a card, it takes that card\'s place', () => {

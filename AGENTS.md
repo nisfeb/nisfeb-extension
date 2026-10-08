@@ -15,6 +15,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
 | `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
 | `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |
+| `lib/agent.js` | The day page's assistant: Talon's prompt rules, its tools (names, words, arguments from `AssistantActions.kt` and `OrreryTools.kt`), the writes that wait for a yes, and how each answer is told to the model. The loop is in `background.js`. |
 | `sky-dial.js` | Draws the sky clock on a canvas, with its readout as text. |
 | `theme-boot.js` | Paints the last look before the page's module loads. A plain script, since an extension page may run no inline one. |
 | `popup.*`, `options.*`, `today.*` | Extension pages. |
