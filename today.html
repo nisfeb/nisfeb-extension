@@ -95,6 +95,11 @@
     .confirm { margin: 4px 14px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; font-size: 13px; }
     .confirm div { display: flex; gap: 8px; margin-top: 6px; }
     button.primary { background: var(--accent); color: var(--on-accent); border: 0; font-weight: 500; }
+    /* the search box: Brave Search, and Ask Brave's Deep Research */
+    .searchbar { max-width: 72rem; margin: 0 auto 14px; display: flex; gap: 8px; }
+    .searchbar input { flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--text); background: color-mix(in srgb, var(--raised) 30%, var(--bg)); border: 1px solid var(--line); border-radius: 22px; padding: 10px 18px; }
+    .searchbar input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    body.pictured .searchbar input { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(8px); }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -107,6 +112,12 @@
     <button class="text" id="done" hidden>Done</button>
     <button class="text" id="opts">Options</button>
   </header>
+
+  <form class="searchbar" id="searchform" role="search" autocomplete="off">
+    <input id="sq" type="search" placeholder="Search with Brave, or research a question" aria-label="Search with Brave">
+    <button class="primary">Search</button>
+    <button type="button" id="research" title="Ask Brave's Deep Research, with these words">Research</button>
+  </form>
 
   <main id="grid">
     <section class="panel" id="none" hidden>

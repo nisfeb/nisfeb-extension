@@ -7,7 +7,7 @@
 //  Talon's home page is (HomeScreen.kt); its settings live in Options.
 
 import { explain, patternFor } from './lib/ship.js'
-import { agenda, money, due, ordered, moved } from './lib/today.js'
+import { agenda, money, due, ordered, moved, searchUrl, researchUrl } from './lib/today.js'
 import { lookVars, fontOf, displayName, VARS, CACHE, BG_KEY, fontKey } from './lib/theme.js'
 import { skyFor, placeKey } from './lib/sky.js'
 import { drawDial } from './sky-dial.js'
@@ -304,6 +304,35 @@ async function background() {
   bgUrl = url
   document.body.style.backgroundImage = url ? `url("${url}")` : ''
   document.body.classList.toggle('pictured', Boolean(url))
+}
+
+//  ── the search box ───────────────────────────────────────────────────
+//
+//  Enter searches with Brave; Research starts Ask Brave's Deep Research.
+//  In this tab, as a new tab's search does; with Ctrl or Cmd, in another.
+
+function go(url, elsewhere) {
+  if (elsewhere) chrome.tabs.create({ url })
+  else location.assign(url)
+}
+let mod = false
+addEventListener('keydown', (e) => { mod = e.ctrlKey || e.metaKey })
+addEventListener('keyup', (e) => { mod = e.ctrlKey || e.metaKey })
+$('searchform').addEventListener('submit', (e) => {
+  e.preventDefault()
+  const q = $('sq').value.trim()
+  if (q) go(searchUrl(q), mod)
+})
+$('research').addEventListener('click', (e) => {
+  const q = $('sq').value.trim()
+  if (q) go(researchUrl(q), e.ctrlKey || e.metaKey)
+  else $('sq').focus()
+})
+
+//  Another card (the priorities) puts words in the box, ready to go.
+function fill(q) {
+  $('sq').value = q
+  $('sq').focus()
 }
 
 //  ── the assistant ────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
 | `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
 | `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |
+| `lib/history.js` | The hourly browsing digest for orrery: sites, page counts and titles from `chrome.history`, the owner's exclusions, the window it covers. |
 | `lib/agent.js` | The day page's assistant: Talon's prompt rules, its tools (names, words, arguments from `AssistantActions.kt` and `OrreryTools.kt`), the writes that wait for a yes, and how each answer is told to the model. The loop is in `background.js`. |
 | `sky-dial.js` | Draws the sky clock on a canvas, with its readout as text. |
 | `theme-boot.js` | Paints the last look before the page's module loads. A plain script, since an extension page may run no inline one. |
@@ -49,7 +50,7 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - Fall back to an older path only on a 404 or 500. A 502 or a timeout means the ship is down or busy, not that the path is wrong.
 - Never hold a connection open to the ship from here.
 - When a change adds requests, update the README's cost line.
-- The ship is the only party by default. The clock's Open-Meteo requests are the one exception, and only once the owner sets a place. Any other third-party request needs the owner's say and a line in the README saying what leaves.
+- The ship is the only party by default. The clock's Open-Meteo requests are the one exception, and only once the owner sets a place. The search box navigates to Brave Search only when the owner searches. The history digest goes to the owner's own ship only, and only once they turn it on; never widen what it sends (no page text) without their say. Any other third-party request needs the owner's say and a line in the README saying what leaves.
 
 ## Security
 
