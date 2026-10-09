@@ -173,21 +173,26 @@ $('bgremove').addEventListener('click', async () => {
   bgShow()
 })
 
-//  ── browsing history into orrery ──────────────────────────────────────
+//  ── browsing into orrery ──────────────────────────────────────────────
+
+const ALL_SITES = ['http://*/*', 'https://*/*']
 
 async function histShow() {
   const { historyDigest: h = {}, historySent: sent = {} } = await chrome.storage.local.get(['historyDigest', 'historySent'])
   const granted = await chrome.permissions.contains({ permissions: ['history'] })
+  const sites = await chrome.permissions.contains({ origins: ALL_SITES })
   const on = Boolean(h.on && granted)
   $('histon').checked = on
+  $('histpages').checked = Boolean(on && h.pages && sites)
+  $('histpages').disabled = !on
   if (document.activeElement !== $('histexclude')) $('histexclude').value = (h.exclude || []).join('\n')
   $('histnow').hidden = !on
   const when = (ms) => new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(ms)
+  const n = (k, one) => `${k} ${one}${k === 1 ? '' : 's'}`
   $('histsaid').textContent = !on ? 'Off.'
-    : sent.error ? `The last digest did not go: ${sent.error}. The next one carries that hour too.`
-      : sent.dropped ? `Orrery dropped the last digest: ${sent.dropped}. Turn its read channel on in Orrery.`
-        : sent.at ? `Last sent ${when(sent.at)}, ${sent.sites ? `${sent.sites} site${sent.sites === 1 ? '' : 's'}` : 'nothing new to send'}. The next goes within the hour.`
-          : 'On. The first digest goes within the hour.'
+    : sent.error ? `The last send did not go: ${sent.error}. The next one carries it too.`
+      : sent.at ? `Last sent ${when(sent.at)}: ${n(sent.visits || 0, 'visit')} and ${n(sent.pages || 0, 'page')}. The next goes within 15 minutes.`
+        : 'On. The first send goes within 15 minutes.'
 }
 
 $('histon').addEventListener('change', async () => {
@@ -200,6 +205,19 @@ $('histon').addEventListener('change', async () => {
   } else {
     await chrome.storage.local.set({ historyDigest: { ...h, on: false } })
     await chrome.permissions.remove({ permissions: ['history'] }).catch(() => {})
+  }
+  histShow()
+})
+$('histpages').addEventListener('change', async () => {
+  const { historyDigest: h = {} } = await chrome.storage.local.get('historyDigest')
+  if ($('histpages').checked) {
+    //  inside the click: the browser asks only under one
+    const granted = await chrome.permissions.request({ origins: ALL_SITES }).catch(() => false)
+    if (!granted) { $('histpages').checked = false; $('histsaid').textContent = 'Without leave to read every site, only the visits go.'; return }
+    await chrome.storage.local.set({ historyDigest: { ...h, pages: true } })
+  } else {
+    await chrome.storage.local.set({ historyDigest: { ...h, pages: false } })
+    await chrome.permissions.remove({ origins: ALL_SITES }).catch(() => {})
   }
   histShow()
 })

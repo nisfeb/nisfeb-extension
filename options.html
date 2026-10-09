@@ -80,9 +80,11 @@
   <p class="note" id="bgsay">Kept in this browser only.</p>
   <button id="bgremove" hidden>Remove the background</button>
 
-  <h2>Browsing history into Orrery</h2>
-  <label class="check"><input id="histon" type="checkbox"> Send Orrery a digest of my browsing, every hour</label>
-  <p class="note">Each hour, the sites you visited, how many pages of each, and the pages' titles go to Orrery's read channel on your ship, under the Orrery key above when one is set. Orrery reads it as it reads a message and files what matters. Never a page's text, never your ship's own pages, never a site listed below, and never a private window's, which the browser keeps out of its history. Turning this on asks the browser to let the extension read its history. If Orrery's model is a cloud model, that model reads the digest.</p>
+  <h2>Browsing into Orrery</h2>
+  <label class="check"><input id="histon" type="checkbox"> Send Orrery what I browse, every 15 minutes</label>
+  <p class="note">Every 15 minutes, the pages you visited and how you came to each (a link, typed, a form sent) go to your ship, under the Orrery key above when one is set. Your ship keeps them, ties each page to a plan, a todo, a person or a place it knows, and asks a zero-data-retention model only about those. Never a private window's pages, never your ship's own, never banking or medical sites or Claude artifacts, never a site listed below. Turning this on asks the browser to let the extension read its history.</p>
+  <label class="check"><input id="histpages" type="checkbox"> Read pages too: each page's text, as it loads</label>
+  <p class="note" id="pagesnote">This asks the browser to let the extension read every site. In Brave, an extension loaded from a folder may also need Site access set to "On all sites" under brave://extensions, in its Details.</p>
   <label for="histexclude">Never send these sites</label>
   <textarea id="histexclude" rows="4" placeholder="one site per line, e.g. mybank.com (its subdomains too)" style="width:100%;font:inherit;padding:.5rem;box-sizing:border-box"></textarea>
   <p class="note" id="histsaid">Off.</p>

@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { hostOf, parseExclude, excluded, digestOf, windowFrom, MAX_WINDOW_MS } from '../lib/history.js'
+import {
+  hostOf, parseExclude, excluded, windowFrom, MAX_WINDOW_MS, EVERY_MIN, skipRules, skipped, visitsOf, pageOf, queued,
+  batchesOf, QUEUE_PAGES, BATCH_PAGES, TEXT_CHARS, SKIP_HOSTS,
+} from '../lib/history.js'
 import { searchUrl } from '../lib/today.js'
 
 test('sites: http(s) only, without www', () => {
@@ -17,38 +20,64 @@ test('the owner\'s list of sites never to send', () => {
   assert.ok(!excluded('notexample.com', ['example.com']))
 })
 
-test('the digest: sites by pages, their titles, nothing excluded, nothing outside the hour', () => {
-  const from = Date.UTC(2026, 9, 8, 14)
-  const to = from + 3600000
-  const at = (m) => from + m * 60000
-  const items = [
-    { url: 'https://github.com/nisfeb/talon/pull/1', title: 'Fix DM thread reads', lastVisitTime: at(5) },
-    { url: 'https://github.com/nisfeb/talon/pull/2', title: 'Release 1.8.8', lastVisitTime: at(10) },
-    { url: 'https://www.github.com/nisfeb/talon/pull/2', title: 'Release 1.8.8', lastVisitTime: at(11) },
-    { url: 'https://search.brave.com/search?q=lisbon+flights', title: 'lisbon flights - Brave Search', lastVisitTime: at(20) },
-    { url: 'https://bank.example.com/accounts', title: 'Your accounts', lastVisitTime: at(30) },
-    { url: 'https://urbit.example.com/apps/orrery/', title: 'Orrery', lastVisitTime: at(40) },
-    { url: 'chrome://history', title: 'History', lastVisitTime: at(41) },
-    { url: 'https://old.example/', title: 'Yesterday', lastVisitTime: from - 1000 },
-  ]
-  const d = digestOf(items, { from, to, exclude: ['example.com'], skip: ['urbit.example.com'], zone: 'UTC' })
-  assert.equal(d.sites, 2)
-  assert.match(d.text, /^What the owner looked at in their web browser between 14:00 and 15:00 on 2026-10-08 \(UTC\)/)
-  assert.match(d.text, /\n- github\.com, 3 pages: "Fix DM thread reads"; "Release 1\.8\.8"\n- search\.brave\.com, 1 page: "lisbon flights - Brave Search"$/)
-  for (const gone of ['Your accounts', 'Orrery', 'History', 'Yesterday']) assert.ok(!d.text.includes(gone), gone)
-  assert.deepEqual(digestOf([], { from, to }), { text: '', sites: 0 })
-  //  a long hour is cut to fit, never past 16 KB
-  const many = Array.from({ length: 3000 }, (_, i) => ({ url: `https://s${i}.example.org/${i}`, title: 'x'.repeat(200) + i, lastVisitTime: at(1) }))
-  const big = digestOf(many, { from, to })
-  assert.ok(new TextEncoder().encode(big.text).length <= 16000 && big.sites <= 25 && big.sites > 1)
+test('what never leaves: banking, medical, Claude artifacts, the ship, the owner\'s list', () => {
+  const rules = skipRules(null, { ship: 'urbit.example.com', exclude: ['news.example'] })
+  for (const u of ['https://www.chase.com/acct', 'https://secure.examplebank.com/', 'https://mychart.example.org/', 'https://claude.ai/artifact/x',
+    'https://claude.ai/code/artifact/x', 'https://urbit.example.com/apps/orrery/', 'https://news.example/today', 'https://a.news.example/x',
+    'http://localhost:8080/', 'chrome://history']) assert.ok(skipped(u, rules), u)
+  for (const u of ['https://github.com/nisfeb/talon', 'https://claude.ai/chat/x', 'https://mail.example/inbox']) assert.ok(!skipped(u, rules), u)
+  //  the ship's lists, when it gives them, are the ones that hold
+  const shipped = skipRules({ skip_hosts: ['onlythis'], skip_paths: ['x.example/private'], exclude: ['shipside.example'] }, { exclude: [] })
+  assert.ok(skipped('https://onlythis.example/', shipped) && skipped('https://x.example/private/1', shipped) && skipped('https://shipside.example/', shipped))
+  assert.ok(!skipped('https://www.chase.com/', shipped))
+  assert.ok(SKIP_HOSTS.includes('bank') && SKIP_HOSTS.includes('health'))
 })
 
-test('the window: from the last digest, an hour the first time, six hours at most', () => {
+test('visits: each with how it came about, in the window, oldest first, the skipped left out', () => {
+  const from = Date.UTC(2026, 9, 8, 14)
+  const to = from + 15 * 60000
+  const at = (m) => from + m * 60000
+  const items = [
+    { url: 'https://shop.example/thanks', title: 'Thank you for your order' },
+    { url: 'https://github.com/nisfeb/talon/pull/2', title: 'Release 1.8.8' },
+    { url: 'https://www.chase.com/acct', title: 'Accounts' },
+  ]
+  const byUrl = new Map([
+    ['https://shop.example/thanks', [{ visitTime: at(9), transition: 'form_submit' }, { visitTime: from - 60000, transition: 'link' }]],
+    ['https://github.com/nisfeb/talon/pull/2', [{ visitTime: at(2), transition: 'typed' }, { visitTime: at(5) }]],
+    ['https://www.chase.com/acct', [{ visitTime: at(3), transition: 'typed' }]],
+  ])
+  const v = visitsOf(items, byUrl, { from, to, rules: skipRules(null) })
+  assert.deepEqual(v.map((x) => [x.url.split('/')[2], x.how, x.at]), [
+    ['github.com', 'typed', at(2)], ['github.com', 'link', at(5)], ['shop.example', 'form_submit', at(9)]])
+})
+
+test('pages: text folded and capped, one per address in the queue, the oldest dropped', () => {
+  const p = pageOf({ url: 'https://a.example/', title: 't', text: 'a  \t b\n\n\n\nc', at: 1 })
+  assert.equal(p.text, 'a b\n\nc')
+  assert.equal(pageOf({ url: 'u', text: 'x'.repeat(TEXT_CHARS + 10), at: 1 }).text.length, TEXT_CHARS)
+  let q = queued([], p)
+  q = queued(q, { ...p, text: 'newer', at: 2 })
+  assert.deepEqual(q.map((x) => x.text), ['newer'])
+  for (let i = 0; i < QUEUE_PAGES + 5; i++) q = queued(q, { url: `https://p${i}.example/`, text: '', at: i })
+  assert.equal(q.length, QUEUE_PAGES)
+  assert.equal(q[0].url, 'https://p5.example/')
+})
+
+test('a send goes in pieces the ship takes', () => {
+  const pages = Array.from({ length: BATCH_PAGES * 2 + 1 }, (_, i) => ({ url: `u${i}` }))
+  const b = batchesOf([{ url: 'v' }], pages)
+  assert.deepEqual(b.map((x) => [x.visits.length, x.pages.length]), [[1, BATCH_PAGES], [0, BATCH_PAGES], [0, 1]])
+  assert.deepEqual(batchesOf([], []), [])
+})
+
+test('the window: from the last send, one interval the first time, six hours at most', () => {
   const now = Date.UTC(2026, 9, 8, 15)
-  assert.equal(windowFrom(0, now), now - 3600000)
-  assert.equal(windowFrom(now - 1800000, now), now - 1800000)
+  assert.equal(EVERY_MIN, 15)
+  assert.equal(windowFrom(0, now), now - EVERY_MIN * 60000)
+  assert.equal(windowFrom(now - 600000, now), now - 600000)
   assert.equal(windowFrom(now - 2 * MAX_WINDOW_MS, now), now - MAX_WINDOW_MS)
-  assert.equal(windowFrom(now + 5000, now), now - 3600000, 'a clock that went back')
+  assert.equal(windowFrom(now + 5000, now), now - EVERY_MIN * 60000, 'a clock that went back')
 })
 
 test('the bar searches Brave Search', () => {

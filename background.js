@@ -11,7 +11,7 @@ import {
 } from './lib/today.js'
 import { lookOf, profileHex, ownNickname, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
-import { digestOf, windowFrom, EVERY_MIN } from './lib/history.js'
+import { windowFrom, EVERY_MIN, hostOf, skipRules, skipped, visitsOf, pageOf, queued, batchesOf } from './lib/history.js'
 import { leoSetup } from './lib/leo.js'
 import {
   MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, createOf, createDraft, updateDraft, eventLines, windowOf, addDays,
@@ -312,15 +312,16 @@ async function places(q) {
   }
 }
 
-//  ── browsing history into orrery ──────────────────────────────────────
+//  ── browsing into orrery (orrery 98's browsing reader) ────────────────
 //
 //  Off until the owner turns it on in Options, which asks the browser for
-//  its history under that click. Then, every hour, the sites visited since
-//  the last digest, how many pages of each and their titles go to orrery's
-//  read channel, under the Orrery key when one is set (as Read in Orrery
-//  sends a page). Never a page's text, never the ship's own pages, never a
-//  site the owner listed. The end of the last digest sent is kept, so an
-//  hour missed is in the next one (six hours at most).
+//  its history under that click. Then, every 15 minutes, the visits since
+//  the last send (with how each came about) and the pages read since, to
+//  orrery's POST /api/browsing, under the Orrery key when one is set. The
+//  ship's own lists of what it never reads (banking, medical, Claude
+//  artifacts), its own site and the owner's list are left out here,
+//  before anything leaves. The end of the last send is kept, so a send
+//  missed is in the next one (six hours at most).
 
 const HISTORY_ALARM = 'history'
 
@@ -330,30 +331,47 @@ async function historySchedule() {
   else await chrome.alarms.clear(HISTORY_ALARM)
 }
 
+//  The page queue is read and written by page reads and sends alike: one
+//  at a time, so neither drops the other's pages.
+let queueLock = Promise.resolve()
+function withQueue(fn) {
+  const p = queueLock.then(fn)
+  queueLock = p.catch(() => {})
+  return p
+}
+
 let historyRun = null
 async function sendHistory() {
   const { historyDigest: h = {}, historySent: last = {}, origin, orreryKey = '' } = await chrome.storage.local.get(['historyDigest', 'historySent', 'origin', 'orreryKey'])
-  if (!h.on) return { ok: false, error: 'the digest is off' }
+  if (!h.on) return { ok: false, error: 'browsing is off' }
   if (!origin) return { ok: false, error: 'no ship yet: set one up in Options' }
   if (!(await chrome.permissions.contains({ permissions: ['history'] }))) return { ok: false, error: 'the browser has not given the extension its history' }
+  const ship = new Ship(origin)
   const to = Date.now()
-  const from = windowFrom(last.to, to)
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const items = await chrome.history.search({ text: '', startTime: from, endTime: to, maxResults: 5000 })
-  const d = digestOf(items, { from, to, exclude: h.exclude || [], skip: [new URL(origin).hostname.replace(/^www\./, '')], zone })
   try {
-    if (d.text) {
-      const hm = (ms) => new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(ms)
-      const r = await new Ship(origin).read({ text: d.text, title: `Browsing, ${hm(from)} to ${hm(to)}`, url: `history/${from}-${to}`, key: orreryKey, kind: 'browser' })
-      await chrome.storage.local.set({ historySent: { to, at: Date.now(), sites: d.sites, dropped: r.dropped || '', error: '' } })
-      return { ok: true, sites: d.sites, dropped: r.dropped || '' }
-    }
-    await chrome.storage.local.set({ historySent: { to, at: Date.now(), sites: 0, dropped: '', error: '' } })
-    return { ok: true, sites: 0 }
+    const status = await ship.browsingStatus(orreryKey)
+    await chrome.storage.local.set({ browsingSkip: { skip_hosts: status.skip_hosts, skip_paths: status.skip_paths, exclude: status.exclude } })
+    const rules = skipRules(status, { ship: hostOf(origin), exclude: h.exclude || [] })
+    const from = windowFrom(last.to, to)
+    const items = (await chrome.history.search({ text: '', startTime: from, endTime: to, maxResults: 2000 })).filter((it) => !skipped(it.url, rules))
+    const byUrl = new Map()
+    for (const it of items) byUrl.set(it.url, await chrome.history.getVisits({ url: it.url }))
+    const visits = visitsOf(items, byUrl, { from, to, rules })
+    const pages = (await withQueue(async () => (await chrome.storage.local.get('browsingPages')).browsingPages || [])).filter((p) => !skipped(p.url, rules))
+    for (const b of batchesOf(visits, pages)) await ship.browsing(b, orreryKey)
+    //  only what went leaves the queue: a page read meanwhile stays
+    const went = new Set(pages.map((p) => `${p.at} ${p.url}`))
+    await withQueue(async () => {
+      const { browsingPages: q = [] } = await chrome.storage.local.get('browsingPages')
+      await chrome.storage.local.set({ browsingPages: q.filter((p) => !went.has(`${p.at} ${p.url}`)) })
+    })
+    await chrome.storage.local.set({ historySent: { to, at: Date.now(), visits: visits.length, pages: pages.length, error: '' } })
+    return { ok: true, visits: visits.length, pages: pages.length }
   } catch (e) {
-    //  the window stays open, so the next digest carries this hour too
-    await chrome.storage.local.set({ historySent: { ...last, error: e.message || String(e), tried: Date.now() } })
-    return { ok: false, error: e.message || String(e) }
+    //  the window stays open, so the next send carries these visits too
+    const error = e && e.status === 404 ? 'your orrery does not take browsing yet: it needs version 98' : (e.message || String(e))
+    await chrome.storage.local.set({ historySent: { ...last, error, tried: Date.now() } })
+    return { ok: false, error }
   }
 }
 
@@ -362,6 +380,34 @@ chrome.alarms.onAlarm.addListener((a) => {
 })
 chrome.runtime.onStartup.addListener(() => { historySchedule() })
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && 'historyDigest' in changes) historySchedule() })
+
+//  Reading pages, when the owner lets the extension read every site: a
+//  page's main text is queued a few seconds after it loads, and again a
+//  few seconds after its address changes in place (an inbox, a chat), so
+//  what the owner opened is what is read. Never a private window's.
+const READ_AFTER_MS = 3000
+const reading = new Map()
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (!(info.status === 'complete' || info.url)) return
+  clearTimeout(reading.get(tabId))
+  reading.set(tabId, setTimeout(() => { reading.delete(tabId); readTab(tabId).catch(() => {}) }, READ_AFTER_MS))
+})
+chrome.tabs.onRemoved.addListener((tabId) => { clearTimeout(reading.get(tabId)); reading.delete(tabId) })
+
+async function readTab(tabId) {
+  const { historyDigest: h = {}, origin, browsingSkip } = await chrome.storage.local.get(['historyDigest', 'origin', 'browsingSkip'])
+  if (!h.on || !h.pages || !origin) return
+  const tab = await chrome.tabs.get(tabId).catch(() => null)
+  if (!tab || tab.incognito || tab.status !== 'complete' || !/^https?:/.test(tab.url || '')) return
+  if (skipped(tab.url, skipRules(browsingSkip, { ship: hostOf(origin), exclude: h.exclude || [] }))) return
+  const text = await inPage(tabId, pageText)
+  if (!text) return
+  const page = pageOf({ url: tab.url, title: tab.title, text, at: Date.now() })
+  await withQueue(async () => {
+    const { browsingPages = [] } = await chrome.storage.local.get('browsingPages')
+    await chrome.storage.local.set({ browsingPages: queued(browsingPages, page) })
+  })
+}
 
 //  ── the day page's assistant ─────────────────────────────────────────
 //
@@ -696,7 +742,7 @@ const actions = {
 
   today: () => today(),
   historyNow: async () => {
-    if (historyRun) return { ok: false, error: 'a digest is being sent' }
+    if (historyRun) return { ok: false, error: 'a send is under way' }
     historyRun = sendHistory().finally(() => { historyRun = null })
     return historyRun
   },

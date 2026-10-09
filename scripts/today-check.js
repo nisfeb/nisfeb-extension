@@ -83,6 +83,7 @@ await new Promise((r) => sites.listen(0, '0.0.0.0', r))
 const SITE = `http://127.0.0.2:${sites.address().port}`
 const SECRET = `http://localhost:${sites.address().port}`
 const reads = []
+const browsings = []
 
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
@@ -120,6 +121,14 @@ const server = createServer((req, res) => {
     if (path.startsWith('/~/scry/settings/')) return res.writeHead(404).end('<html>no</html>')
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
+  }
+  //  orrery 98's browsing reader: what it never reads, and a send's pieces
+  if (req.method === 'GET' && path === '/apps/orrery/api/browsing') return json(res, { enabled: true, model: '', skip_hosts: ['localhost', '127.0.0.1', 'bank'], skip_paths: ['claude.ai/artifact'], exclude: [], days: 0, inbox: 0, last: {} })
+  if (req.method === 'POST' && path === '/apps/orrery/api/browsing') {
+    let body = ''
+    req.on('data', (c) => { body += c })
+    req.on('end', () => { const b = JSON.parse(body); browsings.push(b); json(res, { ok: true, id: `b${browsings.length}`, visits: b.visits.length, pages: b.pages.length }) })
+    return
   }
   if (req.method === 'POST' && path === '/apps/orrery/api/read') {
     let body = ''
@@ -650,25 +659,29 @@ try {
   await close(lo)
   inference = null
 
-  //  history into orrery: real visits, a digest, a listed site left out
+  //  browsing into orrery: real visits, each with how it came about; the
+  //  ship's own site and its skip lists left out, and no page text until
+  //  the owner lets the extension read every site
   for (const u of [`${SITE}/a`, `${SITE}/b`, `${SECRET}/c`]) {
     const v = await cdp('Target.createTarget', { url: u })
     await new Promise((r) => setTimeout(r, 700))
     await cdp('Target.closeTarget', { targetId: v.targetId })
   }
   const off = await handle({ kind: 'historyNow' })
-  check('history: nothing is sent while it is off', off.ok === false && reads.length === 0, JSON.stringify(off))
-  await evaluate("chrome.storage.local.set({ historyDigest: { on: true, exclude: ['localhost'] } })", ws1)
+  check('browsing: nothing is sent while it is off', off.ok === false && browsings.length === 0, JSON.stringify(off))
+  await evaluate("chrome.storage.local.set({ historyDigest: { on: true, exclude: [] } })", ws1)
   const sentNow = await handle({ kind: 'historyNow' })
-  const r0 = reads[0]
-  check('history: turned on, a digest goes to orrery\'s read channel', sentNow.ok && sentNow.sites === 1 && r0 && r0.source.kind === 'browser' && /^Browsing, /.test(r0.title), JSON.stringify(sentNow) + JSON.stringify(r0))
-  check('history: sites, page counts and titles, and nothing else', r0 && r0.text.includes('- 127.0.0.2, 2 pages: ') && r0.text.includes('"Flights to Lisbon"') && r0.text.includes('"Lisbon hotels"') &&
-    !r0.text.includes('Secret page') && !r0.text.includes('body text') && !r0.text.includes('127.0.0.1'), r0 && r0.text)
-  const o2 = await page(['Browsing history into Orrery'], 15000, OPTIONS)
-  check('history: Options says what was sent', (await textOf(o2.sessionId, ['Last sent'])).includes('1 site'), o2.text.slice(-400))
+  const b0 = browsings[0] || {}
+  const sentUrls = (b0.visits || []).map((v) => v.url)
+  check('browsing: turned on, the visits go to orrery\'s browsing route, each with how it came about', sentNow.ok && sentNow.visits >= 2 && sentUrls.includes(`${SITE}/a`) && sentUrls.includes(`${SITE}/b`)
+    && (b0.visits || []).every((v) => typeof v.how === 'string' && v.how && v.at > 0 && typeof v.title === 'string'), JSON.stringify(sentNow) + JSON.stringify(b0).slice(0, 400))
+  check('browsing: the ship\'s site and its skip lists stay out, no page text without leave, nothing to the read channel', !sentUrls.some((u) => u.startsWith(SECRET) || u.startsWith(SHIP))
+    && (b0.pages || []).length === 0 && reads.length === 0, JSON.stringify(sentUrls))
+  const o2 = await page(['Browsing into Orrery'], 15000, OPTIONS)
+  check('browsing: Options says what was sent', /\d+ visits? and 0 pages/.test(await textOf(o2.sessionId, ['Last sent'])), o2.text.slice(-400))
   await close(o2)
   const again2 = await handle({ kind: 'historyNow' })
-  check('history: the next digest starts where the last ended', again2.ok && again2.sites === 0 && reads.length === 1, JSON.stringify(again2))
+  check('browsing: the next send starts where the last ended', again2.ok && again2.visits === 0 && browsings.length === 1, JSON.stringify(again2))
 
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })
