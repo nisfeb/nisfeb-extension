@@ -15,7 +15,7 @@ import { drawDial } from './sky-dial.js'
 
 const $ = (id) => document.getElementById(id)
 const ask = (msg) => chrome.runtime.sendMessage(msg)
-const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary' }
+const APP = { cal: 'Calendar', actions: 'Orrery', mail: 'Auspex', money: 'Armillary', browsing: 'Orrery' }
 const KEYS = ['origin', 'ship', 'status', 'today', 'talonLook', 'useTalonTheme', 'dayMode', 'backgroundAt', 'place', 'weather', 'dayOrder', 'dayLayout', 'dayHidden', 'assistant']
 const SHOWN = 12
 
@@ -77,6 +77,22 @@ const draw = {
       title: t.from, line: t.subject || '(no subject)', side: t.last ? clock(t.last) : '', strong: true,
     }))),
   ],
+
+  //  What orrery made of the owner's browsing: this week's interests, the
+  //  pages filed under a plan (each a link to the page), the forms left.
+  browsing: (d) => {
+    if (d.off) return p('Browsing into Orrery is off. Turn it on in Options and this card shows what Orrery makes of your pages.', 'muted')
+    const inbox = `${st.origin}/apps/orrery/#inbox`
+    const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '')
+    return [
+      d.topics.length ? p(`Into lately: ${d.topics.slice(0, 6).map((t) => t.topic).join(', ')}`) : p('No interests yet: Orrery reads them once a week.', 'muted'),
+      d.research.length > 0 && [el('h3', { textContent: 'Filed under your plans' }),
+        el('ul', {}, d.research.slice(0, SHOWN).map((r) => row({ title: r.name, line: r.url, href: r.url, side: day(r.at) })))],
+      d.forms.length > 0 && [el('h3', { textContent: 'Forms left' }),
+        el('ul', {}, d.forms.slice(0, SHOWN).map((f) => row({ title: f.title, href: inbox, strong: true })))],
+      !d.research.length && !d.forms.length && p('Nothing filed under a plan in the last fortnight.', 'muted'),
+    ]
+  },
 
   money: (d) => (d.vendor
     ? [p(money(d.balance), 'big'), p(`with ${d.vendor}`, 'muted')]
@@ -193,7 +209,7 @@ const narrow = matchMedia('(max-width: 760px)')
 
 //  Cards taken off the page, as on Talon's: kept per browser, and put
 //  back from the header while arranging.
-const NAMES = { clock: 'Clock', cal: 'Today', actions: 'Orrery', mail: 'Mail', money: 'Armillary', assistant: 'Assistant' }
+const NAMES = { clock: 'Clock', cal: 'Today', actions: 'Orrery', mail: 'Mail', money: 'Armillary', assistant: 'Assistant', browsing: 'Browsing' }
 const hidden = () => new Set(Array.isArray(st.dayHidden) ? st.dayHidden : [])
 const setHidden = (h) => chrome.storage.local.set({ dayHidden: [...h] })
 

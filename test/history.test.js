@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   hostOf, parseExclude, excluded, windowFrom, MAX_WINDOW_MS, EVERY_MIN, skipRules, skipped, visitsOf, pageOf, queued,
-  batchesOf, QUEUE_PAGES, BATCH_PAGES, TEXT_CHARS, SKIP_HOSTS,
+  batchesOf, QUEUE_PAGES, BATCH_PAGES, TEXT_CHARS, SKIP_HOSTS, paused, pausedTill, pauseUntil, tomorrow,
 } from '../lib/history.js'
 import { searchUrl } from '../lib/today.js'
 
@@ -82,4 +82,30 @@ test('the window: from the last send, one interval the first time, six hours at 
 
 test('the bar searches Brave Search', () => {
   assert.equal(searchUrl(' lisbon flights & hotels '), 'https://search.brave.com/search?q=lisbon%20flights%20%26%20hotels')
+})
+
+test('a pause: nothing visited in it is sent, even after it ends', () => {
+  const now = 10 * MAX_WINDOW_MS
+  const hour = 3600000
+  let spans = pauseUntil([], now, now + hour)
+  assert.deepEqual(spans, [{ from: now, to: now + hour }])
+  assert.ok(paused(spans, now + 1) && !paused(spans, now - 1) && !paused(spans, now + hour))
+  assert.equal(pausedTill(spans, now + 5), now + hour)
+  assert.equal(pausedTill(spans, now + hour), 0, 'over')
+  //  a resume ends the running one and keeps it, so a later send still leaves it out
+  spans = pauseUntil(spans, now + 60000, 0)
+  assert.deepEqual(spans, [{ from: now, to: now + 60000 }])
+  //  a span no send can reach back into any more is dropped
+  assert.deepEqual(pauseUntil(spans, now + 60000 + MAX_WINDOW_MS + 1, 0), [])
+  const rules = skipRules(null, {})
+  const items = [{ url: 'https://a.example/', title: 'A' }]
+  const visits = new Map([['https://a.example/', [{ visitTime: now - 5, transition: 'link' }, { visitTime: now + 5, transition: 'typed' }]]])
+  assert.deepEqual(visitsOf(items, visits, { from: 0, to: now + hour, rules, pauses: spans }).map((v) => v.at), [now - 5])
+  assert.equal(visitsOf(items, visits, { from: 0, to: now + hour, rules }).length, 2, 'no pause, both')
+})
+
+test('until tomorrow: the next local midnight', () => {
+  const t = new Date(2026, 9, 9, 23, 30).getTime()
+  assert.equal(tomorrow(t), new Date(2026, 9, 10, 0, 0).getTime())
+  assert.equal(tomorrow(new Date(2026, 9, 10, 0, 0).getTime()), new Date(2026, 9, 11, 0, 0).getTime())
 })

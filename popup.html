@@ -24,6 +24,9 @@
     .out.bad { color: #c0392b; }
     #answer { white-space: pre-wrap; max-height: 14rem; overflow: auto; margin: .4rem 0 0; }
     .hidden { display: none; }
+    #herebody p { margin: .3rem 0; }
+    #herebody ul { margin: .2rem 0; padding-left: 1.1rem; }
+    #herebody li button { margin: 0 0 0 .4rem; padding: .05rem .4rem; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -65,6 +68,29 @@
     <label for="rtext">Text (the selection; leave it empty to send the page's readable text)</label>
     <textarea id="rtext" placeholder="Nothing selected: the page's own text goes."></textarea>
     <button class="primary" data-do="read">Send to Orrery</button>
+    <p class="out"></p>
+  </details>
+
+  <details id="here">
+    <summary>This page in Orrery</summary>
+    <div id="herebody"></div>
+    <div id="hereplans">
+      <label for="plan">A plan</label>
+      <select id="plan"></select>
+      <div class="row">
+        <button class="primary" data-do="file">File under it</button>
+        <button data-do="place">It's the place for it</button>
+      </div>
+    </div>
+    <button data-do="never">Never read this site</button>
+    <div id="pausing" class="hidden">
+      <p id="pausenote"></p>
+      <div class="row">
+        <button data-do="pausehour">Pause reading an hour</button>
+        <button data-do="pauseday">Until tomorrow</button>
+      </div>
+      <button id="resume" class="hidden" data-do="resume">Resume reading</button>
+    </div>
     <p class="out"></p>
   </details>
 

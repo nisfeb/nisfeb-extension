@@ -7,11 +7,11 @@ import {
   localDate, escapeXml, complete, completion, readKey, chatPoke, chatStory, isWhom, capBytes,
 } from './lib/ship.js'
 import {
-  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf,
+  due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf, browsingOf,
 } from './lib/today.js'
 import { lookOf, profileHex, ownNickname, fontOf, CACHE, fontKey } from './lib/theme.js'
 import { requestUrl, parseForecast, weatherIsStale, placesUrl, placesOf, placeKey } from './lib/sky.js'
-import { windowFrom, EVERY_MIN, hostOf, skipRules, skipped, visitsOf, pageOf, queued, batchesOf } from './lib/history.js'
+import { windowFrom, EVERY_MIN, hostOf, skipRules, skipped, visitsOf, pageOf, queued, batchesOf, paused } from './lib/history.js'
 import { leoSetup } from './lib/leo.js'
 import {
   MAX_STEPS, STATE_CHARS, TOOLS, WRITES, argsOf, proposal, createOf, createDraft, updateDraft, eventLines, windowOf, addDays,
@@ -243,6 +243,9 @@ async function refreshDay(origin, snap) {
     },
     mail: async () => mailOf(await s.inbox(20)),
     money: async () => balanceOf(await s.account()),
+    //  read only while browsing goes to orrery: off, the card says so
+    browsing: async () => ((await chrome.storage.local.get('historyDigest')).historyDigest || {}).on
+      ? browsingOf(await s.browsingRecent().catch(needs101)) : { off: true },
   }
   const keys = Object.keys(jobs)
   const looked = readLook(origin)
@@ -340,9 +343,12 @@ function withQueue(fn) {
   return p
 }
 
+//  A route an older orrery does not have, said as what it needs.
+const needs101 = (e) => { throw e && e.status === 404 ? new Error('your orrery does not do this yet: it needs version 101') : e }
+
 let historyRun = null
 async function sendHistory() {
-  const { historyDigest: h = {}, historySent: last = {}, origin, orreryKey = '' } = await chrome.storage.local.get(['historyDigest', 'historySent', 'origin', 'orreryKey'])
+  const { historyDigest: h = {}, historySent: last = {}, origin, orreryKey = '', browsingPause: pauses = [] } = await chrome.storage.local.get(['historyDigest', 'historySent', 'origin', 'orreryKey', 'browsingPause'])
   if (!h.on) return { ok: false, error: 'browsing is off' }
   if (!origin) return { ok: false, error: 'no ship yet: set one up in Options' }
   if (!(await chrome.permissions.contains({ permissions: ['history'] }))) return { ok: false, error: 'the browser has not given the extension its history' }
@@ -356,8 +362,8 @@ async function sendHistory() {
     const items = (await chrome.history.search({ text: '', startTime: from, endTime: to, maxResults: 2000 })).filter((it) => !skipped(it.url, rules))
     const byUrl = new Map()
     for (const it of items) byUrl.set(it.url, await chrome.history.getVisits({ url: it.url }))
-    const visits = visitsOf(items, byUrl, { from, to, rules })
-    const pages = (await withQueue(async () => (await chrome.storage.local.get('browsingPages')).browsingPages || [])).filter((p) => !skipped(p.url, rules))
+    const visits = visitsOf(items, byUrl, { from, to, rules, pauses })
+    const pages = (await withQueue(async () => (await chrome.storage.local.get('browsingPages')).browsingPages || [])).filter((p) => !skipped(p.url, rules) && !paused(pauses, p.at))
     for (const b of batchesOf(visits, pages)) await ship.browsing(b, orreryKey)
     //  only what went leaves the queue: a page read meanwhile stays
     const went = new Set(pages.map((p) => `${p.at} ${p.url}`))
@@ -395,8 +401,8 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
 chrome.tabs.onRemoved.addListener((tabId) => { clearTimeout(reading.get(tabId)); reading.delete(tabId) })
 
 async function readTab(tabId) {
-  const { historyDigest: h = {}, origin, browsingSkip } = await chrome.storage.local.get(['historyDigest', 'origin', 'browsingSkip'])
-  if (!h.on || !h.pages || !origin) return
+  const { historyDigest: h = {}, origin, browsingSkip, browsingPause } = await chrome.storage.local.get(['historyDigest', 'origin', 'browsingSkip', 'browsingPause'])
+  if (!h.on || !h.pages || !origin || paused(browsingPause, Date.now())) return
   const tab = await chrome.tabs.get(tabId).catch(() => null)
   if (!tab || tab.incognito || tab.status !== 'complete' || !/^https?:/.test(tab.url || '')) return
   if (skipped(tab.url, skipRules(browsingSkip, { ship: hostOf(origin), exclude: h.exclude || [] }))) return
@@ -739,6 +745,12 @@ const actions = {
     await chrome.storage.local.set({ lastChats: last })
     return { heard }
   }),
+
+  //  The popup's "This page in Orrery" (orrery 101), the owner's word.
+  browsePage: ({ url, title }) => call(async (s) => ({ page: await s.browsingPage(url, title).catch(needs101) })),
+  browseFile: ({ url, body }) => call(async (s) => { await s.browsingFile(url, body).catch(needs101); return {} }),
+  browseUnrelate: ({ url, body }) => call(async (s) => ({ retracted: (await s.browsingUnrelate(url, body).catch(needs101)).retracted || 0 })),
+  browsePlace: ({ url, title, plan }) => call(async (s) => ({ place: (await s.browsingPlace(url, title, plan).catch(needs101)).place })),
 
   today: () => today(),
   historyNow: async () => {

@@ -84,6 +84,7 @@ const SITE = `http://127.0.0.2:${sites.address().port}`
 const SECRET = `http://localhost:${sites.address().port}`
 const reads = []
 const browsings = []
+const hands = []
 
 const fixtures = {
   '/apps/calendar/config.json': { title: 'Calendar', zone: null, ball: 'x', ship: '~zod', lead_min: 30 },
@@ -121,6 +122,24 @@ const server = createServer((req, res) => {
     if (path.startsWith('/~/scry/settings/')) return res.writeHead(404).end('<html>no</html>')
     if (path.startsWith('/apps/auspex/')) return res.writeHead(502).end('<html><h1>502 Bad Gateway</h1></html>')
     if (path.startsWith('/apps/armillary/')) return req.socket.destroy()
+  }
+  //  orrery 101: the page in hand, the owner's word on it, the day's card
+  if (req.method === 'GET' && path.startsWith('/apps/orrery/api/browsing/page?')) {
+    return json(res, { url: new URL(path, SHIP).searchParams.get('url'), skipped: false, kept: true, read: '2026-10-09T10:00:00Z',
+      tied: [{ id: 'situation/lisbon', name: 'Trip to Lisbon' }], filed: [],
+      plans: [{ id: 'situation/lisbon', name: 'Trip to Lisbon', kind: 'situation', starts: '2026-10-20T09:00:00Z', placed: false }] })
+  }
+  if (req.method === 'GET' && path === '/apps/orrery/api/browsing/recent') {
+    return json(res, { interests: { at: '2026-10-05T09:00:00Z', topics: [{ topic: 'Lisbon travel', pages: 9 }] },
+      research: [{ id: 'situation/lisbon', name: 'Trip to Lisbon', url: `${SITE}/a`, at: '2026-10-08T10:00:00Z' }],
+      forms: [{ id: 'f1', title: 'Finish Lisbon hotel booking?' }], last: {} })
+  }
+  const hand = /^\/apps\/orrery\/api\/browsing\/(file|unrelate|place)$/.exec(path)
+  if (req.method === 'POST' && hand) {
+    let body = ''
+    req.on('data', (c) => { body += c })
+    req.on('end', () => { hands.push({ what: hand[1], body: JSON.parse(body) }); json(res, { ok: true, body: 'situation/lisbon', retracted: 1, place: 'place/x', plan: 'situation/lisbon' }) })
+    return
   }
   //  orrery 98's browsing reader: what it never reads, and a send's pieces
   if (req.method === 'GET' && path === '/apps/orrery/api/browsing') return json(res, { enabled: true, model: '', skip_hosts: ['localhost', '127.0.0.1', 'bank'], skip_paths: ['claude.ai/artifact'], exclude: [], days: 0, inbox: 0, last: {} })
@@ -682,6 +701,38 @@ try {
   await close(o2)
   const again2 = await handle({ kind: 'historyNow' })
   check('browsing: the next send starts where the last ended', again2.ok && again2.visits === 0 && browsings.length === 1, JSON.stringify(again2))
+
+  //  the page in hand (orrery 101): the popup's card, opened on a page as
+  //  a menu click opens it, and the owner's word on the page
+  await evaluate(`chrome.storage.session.set({ pending: { card: 'here', url: '${SITE}/a', title: 'Flights to Lisbon', tabId: -1 } })`, ws1)
+  const pop = await page(['Orrery ties it to:', 'Not related', 'Trip to Lisbon'], 15000, PAGE.replace('today.html', 'popup.html'))
+  check('this page: what orrery tied it to, and the plans to file it under', has(pop.text, ['Orrery ties it to:', 'Not related', 'no place yet', 'Pause reading an hour']).length === 0
+    && asked.some((a) => a.startsWith(`GET /apps/orrery/api/browsing/page?url=${encodeURIComponent(`${SITE}/a`)}`)), pop.text)
+  const press = async (sel, want) => { await evaluate(`document.querySelector('${sel}').click()`, pop.sessionId); return textOf(pop.sessionId, [want]) }
+  check('this page: filed under a plan', (await press('[data-do=file]', 'Filed under Trip to Lisbon.')).includes('Filed under Trip to Lisbon.')
+    && JSON.stringify(hands.find((h) => h.what === 'file')?.body) === JSON.stringify({ url: `${SITE}/a`, body: 'situation/lisbon' }), JSON.stringify(hands))
+  check('this page: the place for a plan', (await press('[data-do=place]', 'the place for Trip to Lisbon')).includes('the place for Trip to Lisbon')
+    && JSON.stringify(hands.find((h) => h.what === 'place')?.body) === JSON.stringify({ url: `${SITE}/a`, title: 'Flights to Lisbon', plan: 'situation/lisbon' }), JSON.stringify(hands))
+  check('this page: not related', (await press('[data-do=unrelate]', 'will not tie them again')).includes('will not tie them again')
+    && hands.find((h) => h.what === 'unrelate')?.body.body === 'situation/lisbon', JSON.stringify(hands))
+  //  a pause: a visit inside it never goes, even once it is over
+  check('pause: an hour', (await press('[data-do=pausehour]', 'Reading is paused until')).includes('Resume reading'))
+  const pv = await cdp('Target.createTarget', { url: `${SITE}/b?paused` })
+  await new Promise((r) => setTimeout(r, 700))
+  await cdp('Target.closeTarget', { targetId: pv.targetId })
+  check('pause: resumed', (await press('[data-do=resume]', 'Reading again.')).includes('Reading again.'))
+  const afterPause = await handle({ kind: 'historyNow' })
+  check('pause: what was visited in it is not sent', afterPause.ok && !browsings.flatMap((b) => b.visits).some((v) => v.url.includes('?paused')), JSON.stringify(afterPause))
+  check('never: the site goes on the owner\'s list', (await press('[data-do=never]', 'Nothing from 127.0.0.2')).includes('Orrery never reads this site.')
+    && (await evaluate("chrome.storage.local.get('historyDigest').then((s) => s.historyDigest.exclude)", ws1)).includes('127.0.0.2'))
+  await close(pop)
+  //  the day page's card, read only while browsing goes to orrery
+  asked.length = 0
+  await store({ origin: SHIP, ship: '~zod', status: 'connected', historyDigest: { on: true, exclude: [] } })
+  const bt = await page(['Into lately: Lisbon travel', 'Finish Lisbon hotel booking?'], 30000)
+  check('the browsing card: interests, a page filed under a plan, a form left', has(bt.text, ['Into lately: Lisbon travel', 'Filed under your plans', `${SITE}/a`, 'Finish Lisbon hotel booking?']).length === 0
+    && asked.filter((a) => a === 'GET /apps/orrery/api/browsing/recent').length === 1, bt.text.slice(-600))
+  await close(bt)
 
   //  leaving midway: a refresh with a slow source, the tab closed early
   await store({ origin: SHIP, ship: '~zod', status: 'connected' })

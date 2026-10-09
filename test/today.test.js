@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   REFRESH_MS, due, mergeCards, statusOf, spendOf, calRows, okZone, ymd, agenda, calWindow,
-  mailOf, actionsOf, balanceOf, money,
+  mailOf, actionsOf, balanceOf, money, browsingOf,
 } from '../lib/today.js'
 import { Ship, explain, chatChoices, sendToChat } from '../lib/ship.js'
 
@@ -161,7 +161,7 @@ function ship(answers) {
   const asked = []
   globalThis.fetch = async (url, init) => {
     const u = new URL(url)
-    asked.push({ path: u.pathname + u.search, credentials: init.credentials, method: init.method || 'GET' })
+    asked.push({ path: u.pathname + u.search, credentials: init.credentials, method: init.method || 'GET', body: init.body })
     const a = answers[u.pathname + u.search]
     return typeof a === 'number' ? new Response('<html>nginx</html>', { status: a }) : Response.json(a === undefined ? {} : a)
   }
@@ -260,3 +260,44 @@ test('spendOf: this month\'s spend, nothing yet in a new month, null with no rec
   assert.equal(spendOf(null, now), null)
 })
 
+//  orrery's +serve-browsing-recent (app.hoon, version 101)
+test('the browsing card: interests, pages filed under a plan, forms left', () => {
+  const d = browsingOf({
+    interests: { at: '2026-10-05T09:00:00Z', topics: [{ topic: 'woodworking', pages: 12 }, { topic: '', pages: 1 }] },
+    research: [
+      { id: 'situation/deck', name: 'Build the deck', url: 'https://lumber.example/guide', at: '2026-10-08T10:00:00Z' },
+      { id: 'situation/x', name: 'X', url: 'javascript:alert(1)', at: '2026-10-08T10:00:00Z' },
+    ],
+    forms: [{ id: 'act1', title: 'Finish Summer camp registration?' }],
+    last: { at: '2026-10-09T10:00:00Z' },
+  })
+  assert.deepEqual(d.topics, [{ topic: 'woodworking', pages: 12 }])
+  assert.deepEqual(d.research, [{ id: 'situation/deck', name: 'Build the deck', url: 'https://lumber.example/guide', at: '2026-10-08T10:00:00Z' }], 'a link that is not a web page is left out')
+  assert.deepEqual(d.forms, [{ id: 'act1', title: 'Finish Summer camp registration?' }])
+  assert.deepEqual(browsingOf({ interests: {}, research: [], forms: [], last: {} }), { topics: [], research: [], forms: [] })
+  assert.deepEqual(browsingOf(null), { topics: [], research: [], forms: [] })
+})
+
+//  orrery's browsing routes (version 101), each under the cookie
+test('the page in hand: orrery\'s own routes, the owner\'s cookie', async () => {
+  const s = new Ship('http://ship.test')
+  const asked = ship({})
+  await s.browsingPage('https://a.example/x?y=1', 'A & B')
+  await s.browsingFile('https://a.example/x', 'situation/deck')
+  await s.browsingUnrelate('https://a.example/x', 'situation/deck')
+  await s.browsingPlace('https://a.example/x', 'A', 'situation/deck')
+  await s.browsingRecent()
+  assert.deepEqual(asked.map((a) => `${a.method} ${a.path}`), [
+    'GET /apps/orrery/api/browsing/page?url=https%3A%2F%2Fa.example%2Fx%3Fy%3D1&title=A+%26+B',
+    'POST /apps/orrery/api/browsing/file',
+    'POST /apps/orrery/api/browsing/unrelate',
+    'POST /apps/orrery/api/browsing/place',
+    'GET /apps/orrery/api/browsing/recent',
+  ])
+  assert.deepEqual(asked.slice(1, 4).map((a) => JSON.parse(a.body)), [
+    { url: 'https://a.example/x', body: 'situation/deck' },
+    { url: 'https://a.example/x', body: 'situation/deck' },
+    { url: 'https://a.example/x', title: 'A', plan: 'situation/deck' },
+  ])
+  assert.ok(asked.every((a) => a.credentials === 'include'))
+})
