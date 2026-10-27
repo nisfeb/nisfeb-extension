@@ -59,7 +59,7 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 
 - Build DOM nodes and set text. Never `innerHTML` with anything from a page or the ship.
 - `storage.local` is `TRUSTED_CONTEXTS`: content scripts cannot read it. Keys (the Orrery client key, any Armillary key) stay in the worker.
-- The worker refuses runtime messages that are not from an extension page, except `kind: 'linkOrigin'`, which returns only the ship's origin. Keep it that way.
+- The worker refuses runtime messages that are not from an extension page, except `kind: 'linkOrigin'`, which returns only the ship's origin and the urb-fetch port when urb-fetch is the chosen reader. Keep it that way.
 - Ask for a host permission under the user's click, for the one origin needed. Nothing broad in the manifest.
 - `manifest.json` has no `key`, so the extension's id, and the day page's address, come from the folder's path. Adding a `key` would change the address everyone pasted into Brave's settings.
 

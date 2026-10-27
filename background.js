@@ -4,7 +4,7 @@
 
 import {
   Ship, ApiError, UnreachableError, slug, stamp, quoted, clipMarkdown,
-  localDate, escapeXml, complete, completion, readKey, chatPoke, chatStory, isWhom, capBytes,
+  localDate, escapeXml, complete, completion, readKey, chatPoke, chatStory, isWhom, capBytes, urbGatewayUrl,
 } from './lib/ship.js'
 import {
   due, mergeCards, statusOf, calRows, calWindow, mailOf, actionsOf, spendOf, balanceOf, browsingOf,
@@ -46,8 +46,13 @@ Promise.resolve().then(() => chrome.storage.local.setAccessLevel({ accessLevel: 
 
 const state = async () => ({
   status: 'none',
-  ...(await chrome.storage.local.get(['origin', 'ship', 'status', 'lastError', 'model'])),
+  ...(await chrome.storage.local.get(['origin', 'ship', 'status', 'lastError', 'model', 'urbReader', 'urbPort'])),
 })
+
+//  The port of urb-fetch when Options chose it to open urb:// addresses
+//  (github.com/nisfeb/urb-fetch, no ship needed), else 0: Lattice on the
+//  ship opens them.
+const gatewayPort = (s) => (s.urbReader === 'gateway' ? s.urbPort || 8475 : 0)
 
 async function ship() {
   const s = await state()
@@ -775,7 +780,10 @@ const actions = {
   places: (m) => places(String(m.q || '')),
 
   //  The one request a content script may make: where the ship is.
-  linkOrigin: async () => ({ origin: (await state()).origin || '' }),
+  linkOrigin: async () => {
+    const s = await state()
+    return { origin: s.origin || '', gateway: gatewayPort(s) }
+  },
 
   suggest: ({ q }) => call(async (s) => ({ items: await s.suggest(q) })),
 
@@ -894,8 +902,9 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
 
 chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
   const s = await state()
-  if (!s.origin) { chrome.runtime.openOptionsPage(); return }
-  const url = /^https?:\/\//.test(text) ? text : `${s.origin}/apps/lattice?url=${encodeURIComponent(text)}`
+  const viaGateway = urbGatewayUrl(text.trim(), gatewayPort(s))
+  if (!viaGateway && !s.origin) { chrome.runtime.openOptionsPage(); return }
+  const url = viaGateway || (/^https?:\/\//.test(text) ? text : `${s.origin}/apps/lattice?url=${encodeURIComponent(text)}`)
   if (disposition === 'currentTab') chrome.tabs.update({ url })
   else chrome.tabs.create({ url, active: disposition === 'newForegroundTab' })
 })

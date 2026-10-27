@@ -8,7 +8,7 @@ import vm from 'node:vm'
 const ctx = vm.createContext({})
 vm.runInContext(readFileSync(new URL('../lib/links.js', import.meta.url), 'utf8'), ctx)
 //  Plain objects, so deepEqual does not trip on the context's prototypes.
-const links = (text, origin) => JSON.parse(JSON.stringify(ctx.urbitLinks(text, origin)))
+const links = (text, origin, gateway) => JSON.parse(JSON.stringify(ctx.urbitLinks(text, origin, gateway)))
 const texts = (text, origin = 'https://ship.test') => links(text, origin).map((l) => l.text)
 const S = 'https://ship.test'
 
@@ -41,4 +41,27 @@ test('furum shorthand, opened on the reader\'s ship', () => {
 
 test('where two overlap, the first to start wins', () => {
   assert.deepEqual(texts('(urb://x)f/~zod/b f/~nec/c'), ['urb://x)f/~zod/b', 'f/~nec/c'])
+})
+
+//  urb-fetch (github.com/nisfeb/urb-fetch, urb.go gatewayURL): urb://~ship/path
+//  at http://ship.urb.localhost:<port>/path. Comets' names have a double dash.
+test('urb-fetch as the reader', () => {
+  const G = 8475
+  assert.deepEqual(links('see urb://~zod/notes/a, then', S, G)[0].web, 'http://zod.urb.localhost:8475/notes/a')
+  assert.equal(links('urb://~zod', '', G)[0].web, 'http://zod.urb.localhost:8475/')
+  assert.equal(links('urb://~sampel-palnet/site/?raw#top', '', 9000)[0].web, 'http://sampel-palnet.urb.localhost:9000/site/?raw#top')
+  assert.equal(links('urb://~doznec-dozzod-dozzod-dozzod--dozzod-dozzod-dozzod-dozzod/x', '', G)[0].web,
+    'http://doznec-dozzod-dozzod-dozzod--dozzod-dozzod-dozzod-dozzod.urb.localhost:8475/x')
+  //  no ship in the address, no reader copy; furum still needs the ship
+  assert.equal(links('urb://zod/x', S, G)[0].web, '')
+  assert.deepEqual(links('f/~zod/cats', '', G), [])
+})
+
+//  The worker's omnibox uses lib/ship.js's copy of the rule.
+test('the worker and the link script agree on urb-fetch addresses', async () => {
+  const { urbGatewayUrl } = await import('../lib/ship.js')
+  for (const addr of ['urb://~zod', 'urb://~zod/', 'urb://~sampel-palnet/a/b?c#d', 'urb://zod/x', 'urb://~Zod/x', 'https://~zod/x', 'urb://~', '']) {
+    for (const port of [8475, 0]) assert.equal(urbGatewayUrl(addr, port), ctx.urbGatewayUrl(addr, port), `${addr} ${port}`)
+  }
+  assert.equal(urbGatewayUrl('urb://~zod/x', 0), '')
 })

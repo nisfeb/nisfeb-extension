@@ -50,7 +50,16 @@
   <p class="note">Pages sent to Orrery are then written as this key, so every fact carries the extension's own name and the key's scope bounds what it may file. Mint one in Orrery under Clients, with <code>write</code>. It is kept in this browser and used for nothing else. Blank: pages are sent as you, with the session cookie.</p>
 
   <label><input id="links" type="checkbox" style="width:auto"> Clickable Urbit links on web pages</label>
-  <p class="note">Turns <code>urb://</code> addresses and furum's <code>f/~host/board</code> into links on the pages you read: a furum board opens on your ship, and an <code>urb://</code> link keeps its own address (for Lattice or Talon on this computer) with a <strong>↗</strong> beside it to open it in Lattice on your ship. A script has to run on every page for this, so turning it on asks the browser for access to all sites. The script only reads page text and adds links; it sends nothing anywhere. Turning it off stops the script; the site access stays until you remove it in the browser's extension settings.</p>
+  <p class="note">Turns <code>urb://</code> addresses and furum's <code>f/~host/board</code> into links on the pages you read: a furum board opens on your ship, and an <code>urb://</code> link keeps its own address (for Lattice or Talon on this computer) with a <strong>↗</strong> beside it to open it in a reader, chosen below. A script has to run on every page for this, so turning it on asks the browser for access to all sites. The script only reads page text and adds links; it sends nothing anywhere. Turning it off stops the script; the site access stays until you remove it in the browser's extension settings.</p>
+
+  <label for="urbreader">Open <code>urb://</code> addresses with</label>
+  <select id="urbreader">
+    <option value="ship">Lattice on your ship</option>
+    <option value="gateway">urb-fetch on this computer</option>
+  </select>
+  <label for="urbport">urb-fetch port</label>
+  <input id="urbport" type="number" min="1" max="65535" placeholder="8475">
+  <p class="note">This decides where the <strong>↗</strong> beside an <code>urb://</code> link goes, and where the <code>urb</code> keyword in the address bar opens an <code>urb://</code> address. <a href="https://github.com/nisfeb/urb-fetch">urb-fetch</a> reads pages published with Lattice straight from the Urbit network, with no ship, and serves them at <code>http://<i>ship</i>.urb.localhost:8475/</code>. It has to be running on this computer. It reads only pages shared with everyone and cannot search, so a search in the <code>urb</code> keyword still goes to Lattice on your ship, and furum links still open on your ship. Lattice on your ship sees what has been shared with your ship.</p>
 
   <h2>The day page</h2>
   <p class="note">Your day, drawn as Talon's home page: its sky clock, today's events, Orrery's open actions and its spend this month, the mail waiting and your Armillary balance. The <strong>Today</strong> button in the popup opens it. To arrange the cards, right-click or long-press any of them on the page, as in Talon, then drag them or use their arrows, and press <strong>Done</strong>.</p>

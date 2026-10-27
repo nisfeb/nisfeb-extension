@@ -1,17 +1,24 @@
 //  On ordinary web pages: urb:// addresses and furum's f/~host/board
 //  shorthand in the text become links (lib/links.js finds them), and an
 //  urb:// link, found or already on the page, gets a second one beside it
-//  to the same address in Lattice on your ship.
+//  to the same address in a reader: Lattice on your ship, or urb-fetch on
+//  this computer when Options chose it.
 //
 //  Registered from Options, only when you turn it on. Safe by
 //  construction: nodes are built and text set, never HTML from the page;
 //  links, form controls, editable regions and code are left alone; the
-//  ship's own pages are skipped, since its apps link these themselves.
+//  ship's own pages and urb-fetch's are skipped, since they link these
+//  themselves.
 
 (async () => {
   let origin = ''
-  try { origin = (await chrome.runtime.sendMessage({ kind: 'linkOrigin' })).origin || '' } catch { /* no ship: urb:// only */ }
-  if ((origin && location.origin === origin) || !document.body) return
+  let gateway = 0
+  try {
+    const r = await chrome.runtime.sendMessage({ kind: 'linkOrigin' })
+    origin = r.origin || ''
+    gateway = r.gateway || 0
+  } catch { /* no ship: urb:// only */ }
+  if ((origin && location.origin === origin) || location.hostname.endsWith('.urb.localhost') || !document.body) return
 
   const SKIP = 'a, code, pre, kbd, samp, script, style, noscript, textarea, input, select, option, button, svg, math, [contenteditable]'
   const HINT = /urb:\/\/|f\/~/
@@ -25,10 +32,10 @@
     if (!href.startsWith('urb:')) { a.target = '_blank'; a.rel = 'noopener noreferrer' }
     return a
   }
-  //  The same urb:// address in Lattice's reader on your ship.
+  //  The same urb:// address in a reader.
   const onShip = (web) => {
     const a = link(web, '↗')
-    a.title = 'Open in Lattice on your ship'
+    a.title = gateway ? 'Open with urb-fetch on this computer' : 'Open in Lattice on your ship'
     a.setAttribute('aria-label', a.title)
     a.style.marginLeft = '.2em'
     return a
@@ -37,7 +44,7 @@
   function text(node) {
     const p = node.parentElement
     if (!p || p.closest(SKIP) || p.isContentEditable) return
-    const found = urbitLinks(node.data, origin)
+    const found = urbitLinks(node.data, origin, gateway)
     if (!found.length) return
     const frag = document.createDocumentFragment()
     let at = 0
@@ -53,13 +60,13 @@
   function scan(root) {
     if (root.nodeType === Node.TEXT_NODE) { if (HINT.test(root.data)) text(root); return }
     if (root.nodeType !== Node.ELEMENT_NODE) return
-    if (origin) {
+    if (origin || gateway) {
       const urbs = [...root.querySelectorAll('a[href^="urb:" i]')]
       if (root.matches('a[href^="urb:" i]')) urbs.push(root)
       for (const a of urbs) {
         if ('nisfeb' in a.dataset) continue
         a.dataset.nisfeb = ''
-        const [f] = urbitLinks(a.getAttribute('href'), origin)
+        const [f] = urbitLinks(a.getAttribute('href'), origin, gateway)
         if (f && f.web) a.after(onShip(f.web))
       }
     }

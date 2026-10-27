@@ -36,6 +36,8 @@ async function refresh() {
   $('okey').placeholder = k.has ? 'a key is set; paste another to replace it, or clear to forget it' : 'paste a key minted in Orrery, with write'
   say(describe(s), s.status === 'signed-out' || s.status === 'unreachable')
   $('links').checked = (await chrome.scripting.getRegisteredContentScripts({ ids: [LINKS.id] })).length > 0
+  $('urbreader').value = s.urbReader || 'ship'
+  $('urbport').value = s.urbPort || ''
 }
 
 $('connect').addEventListener('click', async () => {
@@ -90,6 +92,14 @@ $('links').addEventListener('change', async () => {
     await chrome.scripting.registerContentScripts([LINKS])
   }
   say('Urbit links are on, from the next page you load.')
+})
+
+//  Where urb:// addresses open: the ship's Lattice, or urb-fetch on this
+//  computer at a port (blank is its default, 8475).
+$('urbreader').addEventListener('change', () => chrome.storage.local.set({ urbReader: $('urbreader').value }))
+$('urbport').addEventListener('change', () => {
+  const port = Number($('urbport').value)
+  chrome.storage.local.set({ urbPort: Number.isInteger(port) && port > 0 && port < 65536 ? port : 0 })
 })
 
 //  The day page's address, for Brave's homepage setting. Extension pages
