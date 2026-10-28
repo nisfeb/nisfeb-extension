@@ -7,7 +7,9 @@
 //  has no click to give), and chooses this browser as the urb:// reader.
 //  Then it reads a page in reader.html, reads it again from the worker,
 //  checks the link script's answer, and shows an HTML page in the
-//  sandboxed frame and follows an urb:// link from it.
+//  sandboxed frame and follows an urb:// link from it. A fake moon, offline,
+//  takes the moon's way through: added, sealed, locked, unlocked on the
+//  reader page, removed.
 //
 //    URB_FETCH=/path/to/urb-fetch node scripts/urb-check.js
 //
@@ -22,6 +24,7 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { URB_ORIGINS } from '../lib/urb.js'
 import { readerPath } from '../lib/gemtext.js'
+import { fakeKeyfile } from '../lib/mesa.mjs'
 
 const URB_FETCH = process.env.URB_FETCH
 const PAGE = process.env.PAGE || 'urb://~ricsul-bilwyt/lattice-agent-wiki'
@@ -200,6 +203,47 @@ try {
   }
   check('a link in the frame opens in the reader page', at === BASE + readerPath('urb://~zod/elsewhere'), at)
   check('no uncaught errors', errors.length === 0, errors.join('\n'))
+
+  //  A moon in this browser, offline: a fake moon's keyfile (keys from its
+  //  name, so no real identity is spent) and a relay that is not there, so
+  //  nothing it opens reaches the network.
+  const wasm = readFileSync(join(root, 'lib', 'mesa.wasm'))
+  const MOON = '~sampel-sampel-dozzod-nisfeb'
+  const moonKey = await fakeKeyfile(wasm, MOON)
+  const planetKey = await fakeKeyfile(wasm, '~sampel-palnet')
+  await evaluate(`chrome.storage.local.set({ urbRelay: 'ws://127.0.0.1:9/' })`, w)
+  const notMoon = await handle({ kind: 'urbMoonAdd', keyfile: planetKey, passphrase: 'a long passphrase' })
+  check('a moon only: a planet\'s key is refused', !notMoon.ok && /not a moon/.test(notMoon.error), JSON.stringify(notMoon))
+  const short = await handle({ kind: 'urbMoonAdd', keyfile: moonKey, passphrase: 'short' })
+  check('a short passphrase is refused', !short.ok, JSON.stringify(short))
+  const added = await handle({ kind: 'urbMoonAdd', keyfile: moonKey, passphrase: 'a long passphrase' })
+  check('the moon is added', added.ok && added.ship === MOON, JSON.stringify(added))
+  const kept = await evaluate(`chrome.storage.local.get('urbMoon').then((s) => JSON.stringify(s))`, w)
+  check('storage.local holds the key sealed, never as is', kept.includes('"sealed"') && !kept.includes(moonKey.slice(4, 40)), kept.slice(0, 200))
+  const fresh = await evaluate(`new Promise((r) => { const o = indexedDB.open('urb-${MOON}'); o.onsuccess = () => { const g = o.result.transaction('meta').objectStore('meta').get('fresh'); g.onsuccess = () => { r(g.result); o.result.close() } } })`, w)
+  check('a new moon may start from empty state, once', fresh === true, String(fresh))
+  await handle({ kind: 'urbMoonLock' })
+  const locked = await handle({ kind: 'urbRead', url: PAGE })
+  check('locked, a read asks for the passphrase', !locked.ok && locked.locked && locked.ship === MOON, JSON.stringify(locked))
+  const wrong = await handle({ kind: 'urbMoonUnlock', passphrase: 'not the passphrase' })
+  check('a wrong passphrase does not open it', !wrong.ok, JSON.stringify(wrong))
+  //  the reader page asks, and the passphrase typed there opens it
+  const { targetId: rt } = await cdp('Target.createTarget', { url: BASE + readerPath(PAGE) })
+  const { sessionId: r1 } = await cdp('Target.attachToTarget', { targetId: rt, flatten: true })
+  const asking = await textOf(r1, ['Type its passphrase'], 15000)
+  check('the reader page asks for the moon\'s passphrase', asking.includes(MOON), asking.slice(0, 200))
+  await evaluate(`document.getElementById('pass').value = 'a long passphrase'; document.getElementById('unlock').requestSubmit()`, r1)
+  const after = await textOf(r1, ["can't reach the relay"], 15000)
+  check('its passphrase unlocks it, and the read goes on', after.includes("can't reach the relay") && (await handle({ kind: 'urbMoon' })).locked === false, after.slice(0, 200))
+  await cdp('Target.closeTarget', { targetId: rt })
+  const twice = await handle({ kind: 'urbMoonAdd', keyfile: moonKey, passphrase: 'a long passphrase' })
+  check('a second moon waits for the first to go', !twice.ok && /already here/.test(twice.error), JSON.stringify(twice))
+  const removed = await handle({ kind: 'urbMoonRemove' })
+  const left = await evaluate(`indexedDB.databases().then((d) => d.map((x) => x.name).join(' '))`, w)
+  check('removing it deletes its state', removed.ok && !left.includes(`urb-${MOON}`) && !(await handle({ kind: 'urbMoon' })).ship, left)
+  await evaluate(`chrome.storage.local.set({ urbRelay: ${JSON.stringify(RELAY)} })`, w)
+  const comet = await handle({ kind: 'urbRead', url: PAGE })
+  check('with the moon gone, the comet reads again', comet.ok && comet.as === again.as, JSON.stringify(comet).slice(0, 200))
 
   //  The browser stops an idle worker, as here. A new reader page wakes
   //  the next one, which opens the same comet from IndexedDB and carries

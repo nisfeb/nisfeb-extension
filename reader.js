@@ -85,6 +85,17 @@ $('go').addEventListener('submit', (e) => {
   else say('An urb:// address, please, such as urb://~sampel-palnet/page.', true)
 })
 
+//  The moon reading here is locked: its passphrase opens it, then the
+//  page is read.
+$('unlock').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const r = await chrome.runtime.sendMessage({ kind: 'urbMoonUnlock', passphrase: $('pass').value })
+  $('pass').value = ''
+  if (!r.ok) return say(r.error, true)
+  $('unlock').hidden = true
+  load()
+})
+
 async function load() {
   $('addr').value = url
   if (!url) return say('Type an urb:// address.')
@@ -101,6 +112,11 @@ async function load() {
     if (r.ok) {
       say(`Read as ${r.as}, by ${r.how === 'keen' ? 'remote scry' : 'grubbery peek'}.`)
       return r.html ? showHtml(r.body) : showGemtext(r.body)
+    }
+    if (r.locked) {
+      $('unlock').hidden = false
+      $('pass').focus()
+      return say(`This browser reads as ${r.ship}. Type its passphrase to unlock it.`)
     }
     if (!r.later) return say(r.error, true)
   }

@@ -19,7 +19,7 @@ import {
 } from './lib/agent.js'
 import { eventBody, draftFromEvent, onlyBody, doneBody, deleteBody, skipBody, tasksOf, taskMatches, repeats } from './lib/calendar.js'
 import { ymd } from './lib/today.js'
-import { readUrb, DEFAULT_RELAY } from './lib/urb.js'
+import { readUrb, DEFAULT_RELAY, moonState, addMoon, unlockMoon, lockMoon, removeMoon } from './lib/urb.js'
 import { readerPath } from './lib/gemtext.js'
 
 //  Chrome groups several items of one extension under its name, so these
@@ -806,6 +806,14 @@ const actions = {
     const s = await state()
     return readUrb(String(url), s.urbRelay || DEFAULT_RELAY)
   },
+
+  //  The moon that reads in this browser, and its key (lib/urb.js). Only
+  //  our own pages may ask; the key never leaves the worker and storage.
+  urbMoon: async () => ({ ok: true, ...(await moonState()) }),
+  urbMoonAdd: ({ keyfile, passphrase }) => addMoon(keyfile, passphrase),
+  urbMoonUnlock: ({ passphrase }) => unlockMoon(passphrase),
+  urbMoonLock: () => lockMoon(),
+  urbMoonRemove: () => removeMoon(),
 
   suggest: ({ q }) => call(async (s) => ({ items: await s.suggest(q) })),
 

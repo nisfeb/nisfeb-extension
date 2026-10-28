@@ -40,6 +40,20 @@ async function refresh() {
   $('urbreader').value = s.urbReader || 'ship'
   $('urbport').value = s.urbPort || ''
   $('urbrelay').value = s.urbRelay || ''
+  await showMoon()
+}
+
+//  The moon reading in this browser (lib/urb.js does the key work, in the
+//  worker; this page only ever holds what was typed).
+async function showMoon() {
+  const m = await chrome.runtime.sendMessage({ kind: 'urbMoon' })
+  $('moonadd').hidden = Boolean(m.ship)
+  $('moonhave').hidden = !m.ship
+  $('moonunlock').hidden = !m.locked
+  $('moonlock').hidden = !m.ship || m.locked
+  $('moonstate').textContent = !m.ship ? 'No moon here: this browser reads as its own comet.'
+    : m.locked ? `${m.ship} is here, locked until its passphrase is typed. Until then the reader asks for it.`
+    : `${m.ship} is here and unlocked: this browser reads as it.`
 }
 
 $('connect').addEventListener('click', async () => {
@@ -113,6 +127,43 @@ $('urbreader').addEventListener('change', async () => {
   }
   chrome.storage.local.set({ urbReader: reader })
 })
+$('moonaddbtn').addEventListener('click', async () => {
+  if ($('moonpass').value !== $('moonpass2').value) { say('The two passphrases differ.', true); return }
+  say('Checking the key and sealing it…')
+  const r = await chrome.runtime.sendMessage({ kind: 'urbMoonAdd', keyfile: $('moonkey').value, passphrase: $('moonpass').value })
+  $('moonkey').value = ''
+  $('moonpass').value = ''
+  $('moonpass2').value = ''
+  say(r.ok ? `${r.ship} added. This browser now reads as it.` : r.error, !r.ok)
+  await showMoon()
+})
+$('moonunlock').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const r = await chrome.runtime.sendMessage({ kind: 'urbMoonUnlock', passphrase: $('moonunlockpass').value })
+  $('moonunlockpass').value = ''
+  say(r.ok ? `${r.ship} unlocked.` : r.error, !r.ok)
+  await showMoon()
+})
+$('moonlock').addEventListener('click', async () => {
+  await chrome.runtime.sendMessage({ kind: 'urbMoonLock' })
+  say('Locked. The passphrase opens it again.')
+  await showMoon()
+})
+//  Removing deletes the moon's state for good, so it takes a second click.
+let removing = 0
+$('moonremove').addEventListener('click', async () => {
+  if (Date.now() - removing > 5000) {
+    removing = Date.now()
+    $('moonremove').textContent = 'Remove it for good: it then needs |moon-breach before it runs anywhere'
+    return
+  }
+  removing = 0
+  $('moonremove').textContent = 'Remove the moon'
+  const r = await chrome.runtime.sendMessage({ kind: 'urbMoonRemove' })
+  say(r.ok ? `${r.ship || 'The moon'} removed. Breach it on your ship before using it anywhere else.` : r.error, !r.ok)
+  await showMoon()
+})
+
 $('urbrelay').addEventListener('change', () => {
   const typed = $('urbrelay').value.trim()
   const relay = relayUrl(typed)

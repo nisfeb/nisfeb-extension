@@ -15,6 +15,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/urb.js` | Reading `urb://` pages here in the browser: the worker's one engine (libmesa as wasm), its state in IndexedDB, and the relay it sends through. |
 | `lib/mesa.mjs`, `lib/mesa.wasm` | libmesa's engine and lattice's page reader, vendored from urb-fetch's `wasm/` at the commit the file's header names. Change them there, then copy both. |
 | `lib/gemtext.js` | The reader page's pure parts: gemtext as blocks, and where a page's links go. |
+| `lib/seal.js` | A secret under a passphrase (PBKDF2-SHA256, AES-GCM): the moon's key. |
 | `reader.*`, `frame.*` | The reader page, and the sandboxed page (the manifest's `sandbox`) a page's HTML is shown in. |
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
 | `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
@@ -65,6 +66,8 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - Build DOM nodes and set text. Never `innerHTML` with anything from a page or the ship.
 - `storage.local` is `TRUSTED_CONTEXTS`: content scripts cannot read it. Keys (the Orrery client key, any Armillary key) stay in the worker.
 - The worker refuses runtime messages that are not from an extension page, except `kind: 'linkOrigin'`, which returns only the ship's origin, the urb-fetch port and the reader page's address for the chosen reader, and `kind: 'openUrb'`, which opens a checked `urb://` address in the reader page in a new tab and answers nothing. Keep it that way. A web page may not open the extension's pages, so the reader is not web-accessible: that would let any site find the extension's id.
+- A moon's key is sealed in `storage.local` and, once unlocked, held only in `storage.session` (memory, trusted contexts). Only the worker unseals it; Options and the reader page send what was typed and keep nothing. Never log it or return it in a message.
+- A moon may start from empty state only once: its database's `meta` holds `fresh` until its first commit is saved. Never clear a moon's rows to "reset" it; that replays old messages at every ship it spoke to. Removing it is the only reset, and it then needs a breach.
 - The extension pages' policy allows `'wasm-unsafe-eval'`, for libmesa in the worker. A published page's HTML runs only in `frame.html`, a manifest sandbox page: an opaque origin, no extension APIs, and links handed up to the reader page by message.
 - Ask for a host permission under the user's click, for the one origin needed. Nothing broad in the manifest.
 - `manifest.json` has no `key`, so the extension's id, and the day page's address, come from the folder's path. Adding a `key` would change the address everyone pasted into Brave's settings.
