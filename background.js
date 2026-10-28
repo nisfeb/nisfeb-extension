@@ -19,7 +19,7 @@ import {
 } from './lib/agent.js'
 import { eventBody, draftFromEvent, onlyBody, doneBody, deleteBody, skipBody, tasksOf, taskMatches, repeats } from './lib/calendar.js'
 import { ymd } from './lib/today.js'
-import { readUrb, DEFAULT_RELAY, moonState, addMoon, unlockMoon, lockMoon, removeMoon } from './lib/urb.js'
+import { readUrb, furumCall, DEFAULT_RELAY, moonState, addMoon, unlockMoon, lockMoon, removeMoon } from './lib/urb.js'
 import { readerPath } from './lib/gemtext.js'
 
 //  Chrome groups several items of one extension under its name, so these
@@ -807,6 +807,9 @@ const actions = {
     return readUrb(String(url), s.urbRelay || DEFAULT_RELAY)
   },
 
+  //  A furum board, read and written here in the browser (lib/urb.js).
+  furum: async (m) => furumCall((await state()).urbRelay || DEFAULT_RELAY, m),
+
   //  The moon that reads in this browser, and its key (lib/urb.js). Only
   //  our own pages may ask; the key never leaves the worker and storage.
   urbMoon: async () => ({ ok: true, ...(await moonState()) }),
@@ -935,7 +938,10 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
 chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
   const s = await state()
   const addr = text.trim()
-  const here = readerBase(s) && /^urb:\/\/~/.test(addr) ? readerBase(s) + encodeURIComponent(addr) : ''
+  //  in the browser, f/~host/board opens on the furum page
+  const board = readerBase(s) && /^f\/(~[a-z]+(?:-[a-z]+)*)\/([a-z][a-z0-9-]*)(?:\/(\d+))?$/.exec(addr)
+  const here = board ? chrome.runtime.getURL(`furum.html?b=${board[1]}/${board[2]}${board[3] ? `&p=${board[3]}` : ''}`)
+    : readerBase(s) && /^urb:\/\/~/.test(addr) ? readerBase(s) + encodeURIComponent(addr) : ''
   const viaGateway = here || urbGatewayUrl(addr, gatewayPort(s))
   if (!viaGateway && !s.origin) { chrome.runtime.openOptionsPage(); return }
   const url = viaGateway || (/^https?:\/\//.test(text) ? text : `${s.origin}/apps/lattice?url=${encodeURIComponent(text)}`)

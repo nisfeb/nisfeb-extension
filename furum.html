@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>furum</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 16px/1.55 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: .25em 1em; align-items: center; padding: .5em 1em; border-bottom: 1px solid #8884; }
+  header form#go { flex: 1 1 16em; display: flex; }
+  header input { flex: 1; font: inherit; padding: .25em .5em; }
+  #status { color: #888; font-size: .9em; }
+  #status.bad { color: #c33; }
+  main { max-width: 42em; margin: 0 auto; padding: 1em; overflow-wrap: anywhere; }
+  #notes { padding: .5em .75em; border-left: 3px solid #c93; background: #c931; white-space: pre-wrap; }
+  ol { padding-left: 1.5em; }
+  li { margin: .5em 0; }
+  .meta { color: #888; font-size: .85em; }
+  .text { white-space: pre-wrap; }
+  form.stack { display: grid; gap: .4em; margin: .5em 0 1em; }
+  form.stack input, form.stack textarea { font: inherit; padding: .35em .5em; }
+  button { font: inherit; padding: .3em .9em; justify-self: start; }
+</style>
+</head>
+<body>
+<header>
+  <form id="go"><input id="addr" aria-label="A board, ~host/name" placeholder="~sampel-palnet/board" spellcheck="false" autocomplete="off"></form>
+  <span id="status" role="status"></span>
+  <form id="unlock" hidden autocomplete="off"><input id="pass" type="password" aria-label="The moon's passphrase" placeholder="the moon's passphrase"> <button>Unlock</button></form>
+</header>
+<main>
+  <p id="notes" hidden></p>
+  <section id="list" hidden>
+    <h1 id="title"></h1>
+    <details id="new">
+      <summary>New post</summary>
+      <form id="postform" class="stack">
+        <input id="ptitle" placeholder="Title" required maxlength="300" aria-label="Title">
+        <input id="purl" type="url" placeholder="A link (optional)" aria-label="A link">
+        <textarea id="pbody" rows="5" placeholder="Text (optional)" maxlength="40000" aria-label="Text"></textarea>
+        <button>Post</button>
+      </form>
+    </details>
+    <ol id="posts" reversed></ol>
+  </section>
+  <section id="thread" hidden>
+    <p><a id="back">The board</a></p>
+    <h1 id="ttitle"></h1>
+    <p class="meta" id="tmeta"></p>
+    <p id="turl"></p>
+    <p class="text" id="tbody"></p>
+    <p><button id="upvote">Upvote</button> <span class="meta" id="tvotes"></span></p>
+    <h2>Comments</h2>
+    <ol id="comments"></ol>
+    <form id="commentform" class="stack">
+      <textarea id="cbody" rows="3" placeholder="A comment" required maxlength="10000" aria-label="A comment"></textarea>
+      <button>Comment</button>
+    </form>
+  </section>
+</main>
+<script type="module" src="furum.js"></script>
+</body>
+</html>

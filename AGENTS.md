@@ -17,6 +17,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/gemtext.js` | The reader page's pure parts: gemtext as blocks, and where a page's links go. |
 | `lib/seal.js` | A secret under a passphrase (PBKDF2-SHA256, AES-GCM): the moon's key. |
 | `reader.*`, `frame.*` | The reader page, and the sandboxed page (the manifest's `sandbox`) a page's HTML is shown in. |
+| `furum.*`, `lib/furum.mjs` | A furum board on another ship, read and written in the browser through the worker's engine (`kind: 'furum'`, an `op`). `lib/furum.mjs` is vendored from urb-fetch's `wasm/furum.mjs`, with furum release 7's shapes. |
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
 | `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
 | `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |
@@ -37,7 +38,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 - Node 25: `PATH=~/.nvm/versions/node/v25.6.1/bin:$PATH` on sneagan's machine.
 - `npm test`: the unit tests. Run them after every change.
 - `npm run today`: the day page in a throwaway headless Brave against a stand-in ship. No ship, no cookie.
-- `npm run urb` with `URB_FETCH=/path/to/urb-fetch`: the in-browser reader in a throwaway headless Brave, through a relay it starts, against a live ship (`PAGE`, `WANT`). Each run mines a comet, which the ship read keeps a record of, so run it when the reader changes, not on every change.
+- `npm run urb` with `URB_FETCH=/path/to/urb-fetch`: the in-browser reader in a throwaway headless Brave, through a relay it starts, against a live ship (`PAGE`, `WANT`). Each run mines a comet, which the ship read keeps a record of, so run it when the reader changes, not on every change. Add `FURUM=~rup/urbtest` for furum on hoon-development's fleet set `furum` (`fleet reset furum urb-board` first: furum on `~rup` with board `urbtest`): a fake moon posts, comments and upvotes from `furum.html` through a `-relay-fake` relay.
 - `npm run smoke`: a real dev ship, with `SHIP` and `COOKIE_FILE` in the environment. The cookie is sneagan's to mint (`scripts/smoke.js` says how). Never read a ship's `+code`, cookie files or any other credential yourself, and never search the filesystem for one. If a run needs a secret, say so and stop.
 - Never relaunch, reload or drive the owner's running Brave. Use a headless Brave with its own temporary `--user-data-dir`.
 
@@ -68,6 +69,7 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - The worker refuses runtime messages that are not from an extension page, except `kind: 'linkOrigin'`, which returns only the ship's origin, the urb-fetch port and the reader page's address for the chosen reader, and `kind: 'openUrb'`, which opens a checked `urb://` address in the reader page in a new tab and answers nothing. Keep it that way. A web page may not open the extension's pages, so the reader is not web-accessible: that would let any site find the extension's id.
 - A moon's key is sealed in `storage.local` and, once unlocked, held only in `storage.session` (memory, trusted contexts). Only the worker unseals it; Options and the reader page send what was typed and keep nothing. Never log it or return it in a message.
 - A moon may start from empty state only once: its database's `meta` holds `fresh` until its first commit is saved. Never clear a moon's rows to "reset" it; that replays old messages at every ship it spoke to. Removing it is the only reset, and it then needs a breach.
+- `storage.local` `urbFake` runs the engine on a fake network (`urbit -F`). It is for the harness only: no Options control, and never set it in a real profile.
 - The extension pages' policy allows `'wasm-unsafe-eval'`, for libmesa in the worker. A published page's HTML runs only in `frame.html`, a manifest sandbox page: an opaque origin, no extension APIs, and links handed up to the reader page by message.
 - Ask for a host permission under the user's click, for the one origin needed. Nothing broad in the manifest.
 - `manifest.json` has no `key`, so the extension's id, and the day page's address, come from the folder's path. Adding a `key` would change the address everyone pasted into Brave's settings.
@@ -87,6 +89,8 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - Every ship fetch is capped at 60 seconds, so a busy dev ship fails a run on time.
 - A sandboxed frame with an opaque origin runs in a process of its own, so devtools sees it as a target of its own, not as a context in its page. Its `location.origin` is the extension's, from its URL; `self.origin` is `null`, its real origin.
 - wasm hands 64-bit integers to JavaScript as signed BigInts (`lib/mesa.mjs` reads each one unsigned).
+- furum limits a member to one post or comment per 10 s on a board, doubling when they keep at it; votes are free. A test that posts and then comments at once gets a refusal note, not the comment.
+- Dates cross `runtime.sendMessage` as strings.
 
 ## Commits and prose
 

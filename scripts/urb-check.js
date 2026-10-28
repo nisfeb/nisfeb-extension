@@ -16,6 +16,14 @@
 //  PAGE (default urb://~ricsul-bilwyt/lattice-agent-wiki) and WANT (text
 //  the page holds) name the page. BROWSER names the binary. Each run mines
 //  a comet in its scratch profile, and the ship read keeps a record of it.
+//
+//  FURUM=~host/board adds furum on a fake network: a second relay with
+//  -relay-fake, the engine's test-only urbFake, and a fake moon named from
+//  the clock (the host remembers every moon it met, and this profile is
+//  thrown away). On furum.html it reads the board, posts, comments and
+//  upvotes from the page's forms, then posts again at once and sees furum's
+//  refusal. On hoon-development's fleet: `fleet reset furum urb-board`,
+//  then FURUM=~rup/urbtest.
 
 import { mkdtempSync, cpSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,26 +32,32 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { URB_ORIGINS } from '../lib/urb.js'
 import { readerPath } from '../lib/gemtext.js'
-import { fakeKeyfile } from '../lib/mesa.mjs'
+import { fakeKeyfile, shipName } from '../lib/mesa.mjs'
 
 const URB_FETCH = process.env.URB_FETCH
+const FURUM = process.env.FURUM
 const PAGE = process.env.PAGE || 'urb://~ricsul-bilwyt/lattice-agent-wiki'
 const WANT = process.env.WANT || 'Bootstrap lattice'
 if (!URB_FETCH) throw new Error('URB_FETCH (the urb-fetch binary, for its -relay) is required')
 
 //  ── the relay ────────────────────────────────────────────────────────
 
-const relayState = mkdtempSync(join(tmpdir(), 'urb-relay-'))
-const port = 30000 + Math.floor(Math.random() * 20000)
-const RELAY = `ws://127.0.0.1:${port}/`
-const relay = spawn(URB_FETCH, ['-relay', `127.0.0.1:${port}`, '-state', relayState], { stdio: ['ignore', 'ignore', 'pipe'] })
-let relayLog = ''
-relay.stderr.on('data', (c) => { relayLog += c })
-await new Promise((resolve, reject) => {
-  const t = setInterval(() => { if (relayLog.includes('relaying at')) { clearInterval(t); resolve() } }, 100)
-  relay.on('exit', (c) => reject(new Error(`the relay exited ${c}\n${relayLog}`)))
-  setTimeout(() => reject(new Error(`the relay did not start\n${relayLog}`)), 10000)
-})
+async function startRelay(...flags) {
+  const state = mkdtempSync(join(tmpdir(), 'urb-relay-'))
+  const port = 30000 + Math.floor(Math.random() * 20000)
+  const proc = spawn(URB_FETCH, ['-relay', `127.0.0.1:${port}`, '-state', state, ...flags], { stdio: ['ignore', 'ignore', 'pipe'] })
+  let log = ''
+  proc.stderr.on('data', (c) => { log += c })
+  await new Promise((resolve, reject) => {
+    const t = setInterval(() => { if (log.includes('relaying at')) { clearInterval(t); resolve() } }, 100)
+    proc.on('exit', (c) => reject(new Error(`the relay exited ${c}\n${log}`)))
+    setTimeout(() => reject(new Error(`the relay did not start\n${log}`)), 10000)
+  })
+  return { proc, state, url: `ws://127.0.0.1:${port}/` }
+}
+const relays = [await startRelay()]
+const RELAY = relays[0].url
+if (FURUM) relays.push(await startRelay('-relay-fake'))
 
 //  ── stage, grant, launch (as scripts/today-check.js) ─────────────────
 
@@ -264,13 +278,55 @@ try {
   const as2 = (/Read as (~\S+?),/.exec(text2) || [])[1]
   check('after the worker restarts, the same comet reads again', text2.includes(WANT) && as2 === again.as, `${again.as} then ${as2}: ${text2.slice(0, 300)}`)
   console.log(`     ${((Date.now() - t2) / 1000).toFixed(1)} s, as ${as2}`)
+
+  //  furum on a fake network, as a fake moon, from furum.html's forms
+  if (FURUM) {
+    const [host, name] = FURUM.split('/')
+    const k = BigInt(Math.floor(Date.now() / 1000) % 0xffffffff) + 1n
+    const fakeMoon = await shipName(wasm, (k << 32n) | 209n)   //  a moon of ~hus
+    const { targetInfos } = await cdp('Target.getTargets')
+    const wk = targetInfos.find((t) => t.type === 'service_worker' && t.url.endsWith('/background.js'))
+    const { sessionId: w3 } = await cdp('Target.attachToTarget', { targetId: wk.targetId, flatten: true })
+    const h3 = (msg) => evaluate(`nisfeb.handle(${JSON.stringify(msg)})`, w3)
+    await evaluate(`chrome.storage.local.set(${JSON.stringify({ urbFake: true, urbRelay: relays[1].url })})`, w3)
+    const joined = await h3({ kind: 'urbMoonAdd', keyfile: await fakeKeyfile(wasm, fakeMoon), passphrase: 'a long passphrase' })
+    check(`a fake moon for furum, ${fakeMoon}`, joined.ok, JSON.stringify(joined))
+    const t3 = Date.now()
+    const { targetId: ft } = await cdp('Target.createTarget', { url: `${BASE}furum.html?b=${host}/${name}` })
+    const { sessionId: fp } = await cdp('Target.attachToTarget', { targetId: ft, flatten: true })
+    const listed = await textOf(fp, [`read as ${fakeMoon}`], 120000)
+    const count = Number((/(\d+) posts, read as/.exec(listed) || [])[1])
+    check(`furum.html lists ${host}/${name}`, Number.isInteger(count), listed.slice(0, 300))
+    console.log(`     ${count} posts, ${((Date.now() - t3) / 1000).toFixed(1)} s`)
+    const title = `From the browser, ${new Date().toISOString().slice(11, 19)}`
+    await evaluate(`document.getElementById('new').open = true; document.getElementById('ptitle').value = ${JSON.stringify(title)}; document.getElementById('pbody').value = 'Typed into furum.html in headless Brave.'; document.getElementById('postform').requestSubmit()`, fp)
+    const posted = await textOf(fp, [`${count + 1} posts, read as`, title], 90000)
+    check('a post from the page shows on the board', posted.includes(title) && posted.includes(`${count + 1} posts`), posted.slice(0, 300))
+    const mine = (await h3({ kind: 'furum', op: 'posts', host, board: name })).posts.find((p) => p.title === title)
+    await cdp('Page.navigate', { url: `${BASE}furum.html?b=${host}/${name}&p=${mine.id}` }, fp)
+    await textOf(fp, ['Read as'], 60000)
+    await sleep(12000)   //  furum's cooldown: 10 s between a member's posts and comments
+    await evaluate(`document.getElementById('cbody').value = 'A comment from furum.html.'; document.getElementById('commentform').requestSubmit()`, fp)
+    const commented = await textOf(fp, ['A comment from furum.html.', 'Read as'], 90000)
+    check('a comment from the page shows under the post', commented.includes('A comment from furum.html.') && !/Refused/.test(commented), commented.slice(0, 300))
+    await evaluate(`document.getElementById('upvote').click()`, fp)
+    const voted = await textOf(fp, ['1 up'], 90000)
+    check('an upvote from the page counts', voted.includes('1 up'), voted.slice(0, 300))
+    //  votes aren't rate-limited, but a post this soon after the comment is
+    await cdp('Page.navigate', { url: `${BASE}furum.html?b=${host}/${name}` }, fp)
+    await textOf(fp, ['read as'], 60000)
+    await evaluate(`document.getElementById('new').open = true; document.getElementById('ptitle').value = 'Too soon'; document.getElementById('postform').requestSubmit()`, fp)
+    const refused = await textOf(fp, ['Refused'], 90000)
+    check('posting again at once shows furum\'s refusal', /Refused: .*too fast/.test(refused), refused.slice(0, 300))
+    console.log(`     furum, all of it: ${((Date.now() - t3) / 1000).toFixed(1)} s`)
+  }
 } catch (e) {
   check('the run finished', false, e.stack || e.message)
 } finally {
   browser.kill()
-  relay.kill()
+  for (const r of relays) r.proc.kill()
   await new Promise((r) => browser.once('exit', r))
-  for (const d of [stage, profile, relayState]) rmSync(d, { recursive: true, force: true })
+  for (const d of [stage, profile, ...relays.map((r) => r.state)]) rmSync(d, { recursive: true, force: true })
 }
 console.log(failures.length ? `\n${failures.length} failed` : '\nall passed')
 process.exit(failures.length ? 1 : 0)
