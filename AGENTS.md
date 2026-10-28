@@ -32,7 +32,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `popup.*`, `options.*`, `today.*` | Extension pages. |
 | `content.js` | The optional clickable-links script, registered from Options, never from the manifest. |
 | `test/*.test.js` | `node --test` unit tests of the pure parts. |
-| `scripts/smoke.js`, `scripts/today-check.js`, `scripts/urb-check.js` | Headless Brave runs: against a real dev ship (needs a cookie), against a stand-in ship (needs nothing), and the in-browser `urb://` reader against a live ship through a relay of its own. |
+| `scripts/smoke.js`, `scripts/today-check.js`, `scripts/urb-check.js`, `scripts/pub-check.js` | Headless Brave runs: against a real dev ship (needs a cookie), against a stand-in ship (needs nothing), the in-browser `urb://` reader against a live ship through a relay of its own, and publishing from this browser read by Lattice on a fake ship. |
 
 ## Running things
 
@@ -40,6 +40,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 - `npm test`: the unit tests. Run them after every change.
 - `npm run today`: the day page in a throwaway headless Brave against a stand-in ship. No ship, no cookie.
 - `npm run urb` with `URB_FETCH=/path/to/urb-fetch`: the in-browser reader in a throwaway headless Brave, through a relay it starts, against a live ship (`PAGE`, `WANT`). Each run mines a comet, which the ship read keeps a record of, so run it when the reader changes, not on every change. Add `FURUM=~rup/urbtest` for furum on hoon-development's fleet set `furum` (`fleet reset furum urb-board` first: furum on `~rup` with board `urbtest`): a fake moon posts, comments and upvotes from `furum.html` through a `-relay-fake` relay.
+- `npm run pub` with `URB_FETCH`, `READER` and `READER_JAR`: publishing from publish.html as a fake moon through a `-relay-fake` relay, read by Lattice on a fake ship after 150 s with no page or devtools session holding the worker. On hoon-development's fleet: `fleet reset furum hus-lattice` (furum's set with lattice main on `~hus`), then `READER=http://localhost:8134` and a cookie jar from `scripts/hoon-test-kit/ship-cookie.sh ~/fleet/piers/hus http://localhost:8134 <jar>` (a fake ship's, never a real one's).
 - `npm run smoke`: a real dev ship, with `SHIP` and `COOKIE_FILE` in the environment. The cookie is sneagan's to mint (`scripts/smoke.js` says how). Never read a ship's `+code`, cookie files or any other credential yourself, and never search the filesystem for one. If a run needs a secret, say so and stop.
 - Never relaunch, reload or drive the owner's running Brave. Use a headless Brave with its own temporary `--user-data-dir`.
 

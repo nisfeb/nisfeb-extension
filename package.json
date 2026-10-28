@@ -9,6 +9,7 @@
     "icons": "for s in 16 32 48 128; do rsvg-convert -w $s -h $s icon.svg -o icons/nisfeb-$s.png; done",
     "smoke": "node scripts/smoke.js",
     "today": "node scripts/today-check.js",
-    "urb": "node scripts/urb-check.js"
+    "urb": "node scripts/urb-check.js",
+    "pub": "node scripts/pub-check.js"
   }
 }
