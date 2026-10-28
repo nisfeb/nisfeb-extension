@@ -12,6 +12,10 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `background.js` | The MV3 worker: context menus, the omnibox, every ship call the popup and pages ask for, the day page's refresh. Asleep between events, so every message carries what it needs. |
 | `lib/ship.js` | The ship client (a port of auspex's `thunderbird/lib/api.js`) and the pure helpers the tests pin: poke bodies, chat lists, `explain()` for refusals. |
 | `lib/links.js` | Urbit link detection for the content script. A classic script, since content scripts cannot be modules. |
+| `lib/urb.js` | Reading `urb://` pages here in the browser: the worker's one engine (libmesa as wasm), its state in IndexedDB, and the relay it sends through. |
+| `lib/mesa.mjs`, `lib/mesa.wasm` | libmesa's engine and lattice's page reader, vendored from urb-fetch's `wasm/` at the commit the file's header names. Change them there, then copy both. |
+| `lib/gemtext.js` | The reader page's pure parts: gemtext as blocks, and where a page's links go. |
+| `reader.*`, `frame.*` | The reader page, and the sandboxed page (the manifest's `sandbox`) a page's HTML is shown in. |
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
 | `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
 | `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |
@@ -25,13 +29,14 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `popup.*`, `options.*`, `today.*` | Extension pages. |
 | `content.js` | The optional clickable-links script, registered from Options, never from the manifest. |
 | `test/*.test.js` | `node --test` unit tests of the pure parts. |
-| `scripts/smoke.js`, `scripts/today-check.js` | Headless Brave runs: against a real dev ship (needs a cookie), and against a stand-in ship (needs nothing). |
+| `scripts/smoke.js`, `scripts/today-check.js`, `scripts/urb-check.js` | Headless Brave runs: against a real dev ship (needs a cookie), against a stand-in ship (needs nothing), and the in-browser `urb://` reader against a live ship through a relay of its own. |
 
 ## Running things
 
 - Node 25: `PATH=~/.nvm/versions/node/v25.6.1/bin:$PATH` on sneagan's machine.
 - `npm test`: the unit tests. Run them after every change.
 - `npm run today`: the day page in a throwaway headless Brave against a stand-in ship. No ship, no cookie.
+- `npm run urb` with `URB_FETCH=/path/to/urb-fetch`: the in-browser reader in a throwaway headless Brave, through a relay it starts, against a live ship (`PAGE`, `WANT`). Each run mines a comet, which the ship read keeps a record of, so run it when the reader changes, not on every change.
 - `npm run smoke`: a real dev ship, with `SHIP` and `COOKIE_FILE` in the environment. The cookie is sneagan's to mint (`scripts/smoke.js` says how). Never read a ship's `+code`, cookie files or any other credential yourself, and never search the filesystem for one. If a run needs a secret, say so and stop.
 - Never relaunch, reload or drive the owner's running Brave. Use a headless Brave with its own temporary `--user-data-dir`.
 
@@ -59,7 +64,8 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 
 - Build DOM nodes and set text. Never `innerHTML` with anything from a page or the ship.
 - `storage.local` is `TRUSTED_CONTEXTS`: content scripts cannot read it. Keys (the Orrery client key, any Armillary key) stay in the worker.
-- The worker refuses runtime messages that are not from an extension page, except `kind: 'linkOrigin'`, which returns only the ship's origin and the urb-fetch port when urb-fetch is the chosen reader. Keep it that way.
+- The worker refuses runtime messages that are not from an extension page, except `kind: 'linkOrigin'`, which returns only the ship's origin, the urb-fetch port and the reader page's address for the chosen reader, and `kind: 'openUrb'`, which opens a checked `urb://` address in the reader page in a new tab and answers nothing. Keep it that way. A web page may not open the extension's pages, so the reader is not web-accessible: that would let any site find the extension's id.
+- The extension pages' policy allows `'wasm-unsafe-eval'`, for libmesa in the worker. A published page's HTML runs only in `frame.html`, a manifest sandbox page: an opaque origin, no extension APIs, and links handed up to the reader page by message.
 - Ask for a host permission under the user's click, for the one origin needed. Nothing broad in the manifest.
 - `manifest.json` has no `key`, so the extension's id, and the day page's address, come from the folder's path. Adding a `key` would change the address everyone pasted into Brave's settings.
 
@@ -76,6 +82,8 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - Drive headless Brave over the devtools protocol, as both scripts do: `/usr/lib/brave-browser/brave` with a temporary `--user-data-dir`.
 - `chrome_url_overrides.newtab` replaces everyone's new tab with Chromium's plain page and cannot be switched off. Do not add it: the day page becomes the new tab through Brave's own Homepage setting (docs/setup.md).
 - Every ship fetch is capped at 60 seconds, so a busy dev ship fails a run on time.
+- A sandboxed frame with an opaque origin runs in a process of its own, so devtools sees it as a target of its own, not as a context in its page. Its `location.origin` is the extension's, from its URL; `self.origin` is `null`, its real origin.
+- wasm hands 64-bit integers to JavaScript as signed BigInts (`lib/mesa.mjs` reads each one unsigned).
 
 ## Commits and prose
 

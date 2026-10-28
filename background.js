@@ -19,6 +19,8 @@ import {
 } from './lib/agent.js'
 import { eventBody, draftFromEvent, onlyBody, doneBody, deleteBody, skipBody, tasksOf, taskMatches, repeats } from './lib/calendar.js'
 import { ymd } from './lib/today.js'
+import { readUrb, DEFAULT_RELAY } from './lib/urb.js'
+import { readerPath } from './lib/gemtext.js'
 
 //  Chrome groups several items of one extension under its name, so these
 //  read as Nisfeb > Send to Auspex and so on.
@@ -46,13 +48,17 @@ Promise.resolve().then(() => chrome.storage.local.setAccessLevel({ accessLevel: 
 
 const state = async () => ({
   status: 'none',
-  ...(await chrome.storage.local.get(['origin', 'ship', 'status', 'lastError', 'model', 'urbReader', 'urbPort'])),
+  ...(await chrome.storage.local.get(['origin', 'ship', 'status', 'lastError', 'model', 'urbReader', 'urbPort', 'urbRelay'])),
 })
 
 //  The port of urb-fetch when Options chose it to open urb:// addresses
 //  (github.com/nisfeb/urb-fetch, no ship needed), else 0: Lattice on the
 //  ship opens them.
 const gatewayPort = (s) => (s.urbReader === 'gateway' ? s.urbPort || 8475 : 0)
+
+//  The reader page (reader.html, lib/urb.js) less the encoded address,
+//  when Options chose to read urb:// addresses here in the browser, else ''.
+const readerBase = (s) => (s.urbReader === 'browser' ? chrome.runtime.getURL(readerPath('')) : '')
 
 async function ship() {
   const s = await state()
@@ -779,10 +785,26 @@ const actions = {
   weather: () => weather(),
   places: (m) => places(String(m.q || '')),
 
-  //  The one request a content script may make: where the ship is.
+  //  The one request a content script may make: where the ship is, and
+  //  where an urb:// address opens.
   linkOrigin: async () => {
     const s = await state()
-    return { origin: s.origin || '', gateway: gatewayPort(s) }
+    return { origin: s.origin || '', gateway: gatewayPort(s), reader: readerBase(s) }
+  },
+
+  //  The other request a content script may make: open an urb:// address
+  //  in this browser's reader page, in a new tab. It answers nothing.
+  openUrb: async ({ url, active }) => {
+    const addr = String(url)
+    if (!/^urb:\/\/~[a-z-]+(\/\S*)?$/.test(addr) || addr.length > 2048) return { ok: false, error: 'not an urb:// address' }
+    await chrome.tabs.create({ url: chrome.runtime.getURL(readerPath(addr)), active: active !== false })
+    return { ok: true }
+  },
+
+  //  One try at an urb:// page, read here in the browser (lib/urb.js).
+  urbRead: async ({ url }) => {
+    const s = await state()
+    return readUrb(String(url), s.urbRelay || DEFAULT_RELAY)
   },
 
   suggest: ({ q }) => call(async (s) => ({ items: await s.suggest(q) })),
@@ -821,10 +843,12 @@ const actions = {
 }
 
 //  Our own pages may ask anything. A content script runs in a web page's
-//  process, so it may ask where the ship is and nothing else.
+//  process, so it may ask where the ship is, and open an urb:// address in
+//  the reader page, and nothing else.
+const FROM_PAGES = new Set(['linkOrigin', 'openUrb'])
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const ours = String(sender.url || '').startsWith(chrome.runtime.getURL(''))
-  const fn = (ours || (msg && msg.kind === 'linkOrigin')) && actions[msg && msg.kind]
+  const fn = (ours || (msg && FROM_PAGES.has(msg.kind))) && actions[msg && msg.kind]
   if (!fn) { reply({ ok: false, error: `unknown request ${msg && msg.kind}` }); return false }
   fn(msg).then(reply, (e) => reply({ ok: false, error: e.message || String(e) }))
   return true
@@ -902,7 +926,9 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
 
 chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
   const s = await state()
-  const viaGateway = urbGatewayUrl(text.trim(), gatewayPort(s))
+  const addr = text.trim()
+  const here = readerBase(s) && /^urb:\/\/~/.test(addr) ? readerBase(s) + encodeURIComponent(addr) : ''
+  const viaGateway = here || urbGatewayUrl(addr, gatewayPort(s))
   if (!viaGateway && !s.origin) { chrome.runtime.openOptionsPage(); return }
   const url = viaGateway || (/^https?:\/\//.test(text) ? text : `${s.origin}/apps/lattice?url=${encodeURIComponent(text)}`)
   if (disposition === 'currentTab') chrome.tabs.update({ url })

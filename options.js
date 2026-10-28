@@ -8,6 +8,7 @@ import { lookSaid, CACHE, BG_KEY } from './lib/theme.js'
 import { coordsOf } from './lib/sky.js'
 import { parseExclude } from './lib/history.js'
 import { LEO_STEPS, LEO_KEY_NOTE } from './lib/leo.js'
+import { URB_ORIGINS, relayUrl } from './lib/urb.js'
 
 const $ = (id) => document.getElementById(id)
 const say = (text, bad = false) => {
@@ -38,6 +39,7 @@ async function refresh() {
   $('links').checked = (await chrome.scripting.getRegisteredContentScripts({ ids: [LINKS.id] })).length > 0
   $('urbreader').value = s.urbReader || 'ship'
   $('urbport').value = s.urbPort || ''
+  $('urbrelay').value = s.urbRelay || ''
 }
 
 $('connect').addEventListener('click', async () => {
@@ -94,9 +96,29 @@ $('links').addEventListener('change', async () => {
   say('Urbit links are on, from the next page you load.')
 })
 
-//  Where urb:// addresses open: the ship's Lattice, or urb-fetch on this
-//  computer at a port (blank is its default, 8475).
-$('urbreader').addEventListener('change', () => chrome.storage.local.set({ urbReader: $('urbreader').value }))
+//  Where urb:// addresses open: the ship's Lattice, urb-fetch on this
+//  computer at a port (blank is its default, 8475), or this browser's own
+//  comet through a relay. That one needs the roller and bootstrap, asked
+//  for here, inside the choice.
+$('urbreader').addEventListener('change', async () => {
+  const reader = $('urbreader').value
+  if (reader === 'browser') {
+    let granted = false
+    try { granted = await chrome.permissions.request({ origins: URB_ORIGINS }) } catch (e) { say(`Permission request failed: ${e.message}`, true) }
+    if (!granted) {
+      $('urbreader').value = (await chrome.storage.local.get('urbReader')).urbReader || 'ship'
+      say('Reading here needs the extension to ask roller.urbit.org and bootstrap.urbit.org.', true)
+      return
+    }
+  }
+  chrome.storage.local.set({ urbReader: reader })
+})
+$('urbrelay').addEventListener('change', () => {
+  const typed = $('urbrelay').value.trim()
+  const relay = relayUrl(typed)
+  if (typed && !relay) { say('A relay address starts with ws:// or wss://.', true); return }
+  chrome.storage.local.set({ urbRelay: relay })
+})
 $('urbport').addEventListener('change', () => {
   const port = Number($('urbport').value)
   chrome.storage.local.set({ urbPort: Number.isInteger(port) && port > 0 && port < 65536 ? port : 0 })

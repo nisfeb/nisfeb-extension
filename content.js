@@ -1,8 +1,8 @@
 //  On ordinary web pages: urb:// addresses and furum's f/~host/board
 //  shorthand in the text become links (lib/links.js finds them), and an
 //  urb:// link, found or already on the page, gets a second one beside it
-//  to the same address in a reader: Lattice on your ship, or urb-fetch on
-//  this computer when Options chose it.
+//  to the same address in a reader: Lattice on your ship, urb-fetch on
+//  this computer, or this browser's own reader page, as Options chose.
 //
 //  Registered from Options, only when you turn it on. Safe by
 //  construction: nodes are built and text set, never HTML from the page;
@@ -13,10 +13,12 @@
 (async () => {
   let origin = ''
   let gateway = 0
+  let reader = ''
   try {
     const r = await chrome.runtime.sendMessage({ kind: 'linkOrigin' })
     origin = r.origin || ''
     gateway = r.gateway || 0
+    reader = r.reader || ''
   } catch { /* no ship: urb:// only */ }
   if ((origin && location.origin === origin) || location.hostname.endsWith('.urb.localhost') || !document.body) return
 
@@ -32,25 +34,35 @@
     if (!href.startsWith('urb:')) { a.target = '_blank'; a.rel = 'noopener noreferrer' }
     return a
   }
-  //  The same urb:// address in a reader.
-  const onShip = (web) => {
-    const a = link(web, '↗')
-    a.title = gateway ? 'Open with urb-fetch on this computer' : 'Open in Lattice on your ship'
+  //  The same urb:// address in a reader. A web page may not open the
+  //  extension's own reader page, so that one goes through the worker.
+  const onShip = (f) => {
+    const a = link(f.web, '↗')
+    a.title = reader ? 'Open here in the browser' : gateway ? 'Open with urb-fetch on this computer' : 'Open in Lattice on your ship'
     a.setAttribute('aria-label', a.title)
     a.style.marginLeft = '.2em'
+    if (reader) {
+      const open = (e) => {
+        if (e.button > 1) return
+        e.preventDefault()
+        chrome.runtime.sendMessage({ kind: 'openUrb', url: f.href, active: !(e.button === 1 || e.ctrlKey || e.metaKey) }).catch(() => {})
+      }
+      a.addEventListener('click', open)
+      a.addEventListener('auxclick', open)
+    }
     return a
   }
 
   function text(node) {
     const p = node.parentElement
     if (!p || p.closest(SKIP) || p.isContentEditable) return
-    const found = urbitLinks(node.data, origin, gateway)
+    const found = urbitLinks(node.data, origin, gateway, reader)
     if (!found.length) return
     const frag = document.createDocumentFragment()
     let at = 0
     for (const f of found) {
       frag.append(node.data.slice(at, f.start), link(f.href, f.text))
-      if (f.web) frag.append(onShip(f.web))
+      if (f.web) frag.append(onShip(f))
       at = f.end
     }
     frag.append(node.data.slice(at))
@@ -60,14 +72,14 @@
   function scan(root) {
     if (root.nodeType === Node.TEXT_NODE) { if (HINT.test(root.data)) text(root); return }
     if (root.nodeType !== Node.ELEMENT_NODE) return
-    if (origin || gateway) {
+    if (origin || gateway || reader) {
       const urbs = [...root.querySelectorAll('a[href^="urb:" i]')]
       if (root.matches('a[href^="urb:" i]')) urbs.push(root)
       for (const a of urbs) {
         if ('nisfeb' in a.dataset) continue
         a.dataset.nisfeb = ''
-        const [f] = urbitLinks(a.getAttribute('href'), origin, gateway)
-        if (f && f.web) a.after(onShip(f.web))
+        const [f] = urbitLinks(a.getAttribute('href'), origin, gateway, reader)
+        if (f && f.web) a.after(onShip(f))
       }
     }
     //  Collected first: replacing a node under the walker loses its place.

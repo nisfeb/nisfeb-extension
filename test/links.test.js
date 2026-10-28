@@ -8,7 +8,7 @@ import vm from 'node:vm'
 const ctx = vm.createContext({})
 vm.runInContext(readFileSync(new URL('../lib/links.js', import.meta.url), 'utf8'), ctx)
 //  Plain objects, so deepEqual does not trip on the context's prototypes.
-const links = (text, origin, gateway) => JSON.parse(JSON.stringify(ctx.urbitLinks(text, origin, gateway)))
+const links = (text, origin, gateway, reader) => JSON.parse(JSON.stringify(ctx.urbitLinks(text, origin, gateway, reader)))
 const texts = (text, origin = 'https://ship.test') => links(text, origin).map((l) => l.text)
 const S = 'https://ship.test'
 
@@ -64,4 +64,13 @@ test('the worker and the link script agree on urb-fetch addresses', async () => 
     for (const port of [8475, 0]) assert.equal(urbGatewayUrl(addr, port), ctx.urbGatewayUrl(addr, port), `${addr} ${port}`)
   }
   assert.equal(urbGatewayUrl('urb://~zod/x', 0), '')
+})
+
+//  This browser's reader page, when Options chose it, wins over urb-fetch
+//  and the ship; the address travels encoded, as readerPath has it.
+test('the in-browser reader page, when chosen', async () => {
+  const { readerPath } = await import('../lib/gemtext.js')
+  const R = 'chrome-extension://abc/reader.html?u='
+  assert.deepEqual(links('go urb://~zod/a b', S, 8475, R)[0].web, `${R}urb%3A%2F%2F~zod%2Fa`)
+  assert.equal(`chrome-extension://abc/${readerPath('urb://~zod/a')}`, links('urb://~zod/a', '', 0, R)[0].web)
 })

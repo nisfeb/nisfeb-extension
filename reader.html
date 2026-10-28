@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>urb://</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 16px/1.55 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: .25em 1em; align-items: center; padding: .5em 1em; border-bottom: 1px solid #8884; }
+  header form { flex: 1 1 20em; display: flex; }
+  header input { flex: 1; font: inherit; padding: .25em .5em; }
+  #status { color: #888; font-size: .9em; }
+  #status.bad { color: #c33; }
+  main { max-width: 42em; margin: 0 auto; padding: 1em; overflow-wrap: anywhere; }
+  main pre { overflow-x: auto; padding: .75em; background: #8881; }
+  main blockquote { margin: 0; padding-left: 1em; border-left: 3px solid #8886; }
+  iframe { display: block; border: 0; width: 100%; height: calc(100vh - 3.2em); }
+</style>
+</head>
+<body>
+<header>
+  <form id="go"><input id="addr" aria-label="An urb:// address" placeholder="urb://~sampel-palnet/page" spellcheck="false" autocomplete="off"></form>
+  <span id="status" role="status"></span>
+</header>
+<main id="page"></main>
+<iframe id="frame" src="frame.html" title="The page" hidden></iframe>
+<script type="module" src="reader.js"></script>
+</body>
+</html>
