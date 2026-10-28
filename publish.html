@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publish from this browser</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 16px/1.55 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: .25em 1em; align-items: center; padding: .5em 1em; border-bottom: 1px solid #8884; }
+  #status { color: #888; font-size: .9em; }
+  #status.bad { color: #c33; }
+  main { max-width: 42em; margin: 0 auto; padding: 1em; overflow-wrap: anywhere; }
+  ol { padding-left: 1.5em; }
+  li { margin: .75em 0; }
+  .meta { color: #888; font-size: .85em; }
+  form.stack { display: grid; gap: .4em; margin: .5em 0 1em; }
+  form.stack input, form.stack textarea { font: inherit; padding: .35em .5em; }
+  textarea { font-family: ui-monospace, monospace; }
+  button { font: inherit; padding: .3em .9em; justify-self: start; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Publish from this browser</strong>
+  <span id="status" role="status"></span>
+  <form id="unlock" hidden autocomplete="off"><input id="pass" type="password" aria-label="The moon's passphrase" placeholder="the moon's passphrase"> <button>Unlock</button></form>
+</header>
+<main>
+  <p>Pages here are public: anyone may read them, in Lattice on their ship at the address shown. This browser serves them while it runs, through the relay set in Options. Write them in gemtext, or as HTML.</p>
+  <form id="put" class="stack">
+    <label for="name">Name</label>
+    <input id="name" required placeholder="notes/intro (index is the home page)" spellcheck="false" autocomplete="off">
+    <label for="body">The page</label>
+    <textarea id="body" rows="14" spellcheck="true"></textarea>
+    <button>Publish</button>
+  </form>
+  <h2>Published</h2>
+  <p class="meta" id="none" hidden>Nothing yet.</p>
+  <ol id="pages"></ol>
+</main>
+<script type="module" src="publish.js"></script>
+</body>
+</html>

@@ -18,6 +18,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/seal.js` | A secret under a passphrase (PBKDF2-SHA256, AES-GCM): the moon's key. |
 | `reader.*`, `frame.*` | The reader page, and the sandboxed page (the manifest's `sandbox`) a page's HTML is shown in. |
 | `furum.*`, `lib/furum.mjs` | A furum board on another ship, read and written in the browser through the worker's engine (`kind: 'furum'`, an `op`). `lib/furum.mjs` is vendored from urb-fetch's `wasm/furum.mjs`, with furum release 7's shapes. |
+| `publish.*`, `lib/pub.mjs` | Pages published from this browser and served to Lattice on other ships by the worker's engine (`kind: 'urbPub'`, an `op`), kept in the identity's database (`meta` 'pub') with the keeps of readers following them. `lib/pub.mjs` is vendored from urb-fetch's `wasm/pub.mjs`, with lattice's layout. |
 | `lib/today.js` | The day page's pure logic: parsers for each app's answer, "what is today", the refresh throttle. |
 | `lib/theme.js` | Talon's look: the colour maths (Oklab, as Compose mixes), `customScheme`'s roles, which theme is on, the accent. |
 | `lib/sky.js` | Talon's sky clock, ported as it is: sun, moon, sky mix, weather, places, the palette and cloud and star rules. |

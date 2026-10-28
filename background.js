@@ -19,7 +19,7 @@ import {
 } from './lib/agent.js'
 import { eventBody, draftFromEvent, onlyBody, doneBody, deleteBody, skipBody, tasksOf, taskMatches, repeats } from './lib/calendar.js'
 import { ymd } from './lib/today.js'
-import { readUrb, furumCall, DEFAULT_RELAY, moonState, addMoon, unlockMoon, lockMoon, removeMoon } from './lib/urb.js'
+import { readUrb, furumCall, pubCall, serveIfPublished, DEFAULT_RELAY, moonState, addMoon, unlockMoon, lockMoon, removeMoon } from './lib/urb.js'
 import { readerPath } from './lib/gemtext.js'
 
 //  Chrome groups several items of one extension under its name, so these
@@ -396,6 +396,10 @@ chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === HISTORY_ALARM && !historyRun) historyRun = sendHistory().catch(() => {}).finally(() => { historyRun = null })
 })
 chrome.runtime.onStartup.addListener(() => { historySchedule() })
+
+//  Pages published here are served whenever the worker runs (lib/urb.js).
+const relayNow = async () => (await chrome.storage.local.get('urbRelay')).urbRelay || DEFAULT_RELAY
+relayNow().then(serveIfPublished).catch(() => {})
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && 'historyDigest' in changes) historySchedule() })
 
 //  Reading pages, when the owner lets the extension read every site: a
@@ -810,11 +814,18 @@ const actions = {
   //  A furum board, read and written here in the browser (lib/urb.js).
   furum: async (m) => furumCall((await state()).urbRelay || DEFAULT_RELAY, m),
 
+  //  Pages published from here, served to Lattice on other ships (lib/urb.js).
+  urbPub: async (m) => pubCall(await relayNow(), m),
+
   //  The moon that reads in this browser, and its key (lib/urb.js). Only
   //  our own pages may ask; the key never leaves the worker and storage.
   urbMoon: async () => ({ ok: true, ...(await moonState()) }),
   urbMoonAdd: ({ keyfile, passphrase }) => addMoon(keyfile, passphrase),
-  urbMoonUnlock: ({ passphrase }) => unlockMoon(passphrase),
+  urbMoonUnlock: async ({ passphrase }) => {
+    const r = await unlockMoon(passphrase)
+    if (r.ok) relayNow().then(serveIfPublished).catch(() => {})
+    return r
+  },
   urbMoonLock: () => lockMoon(),
   urbMoonRemove: () => removeMoon(),
 
