@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { pageKey } from '../lib/pub.mjs'
 import { uv } from '../lib/mesa.mjs'
+import { FORMATS, formatOf } from '../lib/pubformat.js'
 
 test('pageKey: lattice names', () => {
   assert.equal(pageKey('notes/intro'), '/notes/intro')
@@ -24,4 +25,13 @@ test('uv: as scot %uv writes it', () => {
   assert.equal(uv(0xdeadbeefn), '0v3f.arfnf')   //  from vere's eval
   assert.equal(uv(31n), '0vv')
   assert.equal(uv(32n ** 5n), '0v1.00000')
+})
+
+test('formatOf: a page by its mark, a stored page without one by its body', () => {
+  assert.equal(formatOf({ mark: 'html', body: 'x' }), 'html')
+  assert.equal(formatOf({ mark: 'gmi', body: '<p>' }), 'html')   //  as the reader shows it
+  assert.equal(formatOf({ mark: 'gmi', body: '# x' }), 'gmi')
+  assert.equal(formatOf({ body: '# x' }), 'gmi')
+  assert.equal(formatOf({ body: '  <!doctype html>' }), 'html')
+  assert.deepEqual(FORMATS, ['gmi', 'html'])
 })

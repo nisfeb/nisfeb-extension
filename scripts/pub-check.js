@@ -147,6 +147,10 @@ try {
   const listed = await textOf(p, [`urb://${moon}/notes/hello`, 'revision 1'], 60000)
   check('the page is listed with its address', listed.includes(`urb://${moon}/notes/hello`) && listed.includes('revision 1'), listed.slice(0, 400))
   console.log(`     ${((Date.now() - t0) / 1000).toFixed(1)} s`)
+  const html = '<!doctype html><title>t</title><p>An HTML page</p>\n'
+  await evaluate(`document.getElementById('name').value = 'notes/web'; document.getElementById('format').value = 'html'; document.getElementById('body').value = ${JSON.stringify(html)}; document.getElementById('put').requestSubmit()`, p)
+  const listedHtml = await textOf(p, [`urb://${moon}/notes/web`, 'HTML, revision 1'], 60000)
+  check('an HTML page is listed as HTML', listedHtml.includes('HTML, revision 1'), listedHtml.slice(0, 400))
   const bad = await handle({ kind: 'urbPub', op: 'put', name: 'n/x', body: 'no' })
   check('a one-letter first part is refused', !bad.ok && /two characters/.test(bad.error), JSON.stringify(bad))
 
@@ -162,6 +166,8 @@ try {
   const got = await readerFetch(`urb://${moon}/notes/hello`)
   check(`after ${IDLE} s idle, Lattice on ${READER} reads the page`, got.status === 200 && got.body === body, JSON.stringify(got).slice(0, 300))
   console.log(`     ${((Date.now() - t1) / 1000).toFixed(1)} s`)
+  const gotHtml = await readerFetch(`urb://${moon}/notes/web`)
+  check('Lattice reads the HTML page', gotHtml.status === 200 && gotHtml.body === html, JSON.stringify(gotHtml).slice(0, 300))
   const { sessionId: w2 } = await workerSession()
   const same = await evaluate('self.__pubCheck', w2).catch(() => undefined)
   check('the worker stayed awake: the same one', same === mark, `found ${same}`)
