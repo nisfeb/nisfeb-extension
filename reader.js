@@ -1,9 +1,12 @@
 //  The reader page: one urb:// page, read here in the browser by the
-//  worker's engine (lib/urb.js). Gemtext is built as nodes with text set.
-//  HTML goes to frame.html, a sandboxed page with an opaque origin, where
-//  the publisher's scripts run but reach nothing of the extension's.
+//  worker's engine (lib/urb.js), and shown as its mark says. Gemtext and
+//  Markdown are built as nodes with text set (lib/gemtext.js,
+//  lib/markdown.js), and text (and js, css) goes in a <pre>. HTML goes to
+//  frame.html, a sandboxed page with an opaque origin, where the
+//  publisher's scripts run but reach nothing of the extension's.
 
 import { gemtext, linkTarget, readerPath } from './lib/gemtext.js'
+import { mdNodes, safeLink } from './lib/markdown.js'
 
 //  A read gives up after a minute at most. A ship catching up on this
 //  browser's comet can take a minute or two, so the page asks again.
@@ -22,6 +25,30 @@ function say(text, bad = false) {
 function hrefFor(target) {
   const t = linkTarget(url, target)
   return t.startsWith('urb://') ? readerPath(t) : t || null
+}
+
+//  Where a Markdown link goes: as hrefFor, and mail and gemini links as
+//  written, each scheme in lower case. lib/markdown.js has already
+//  dropped any other scheme.
+function mdHref(target) {
+  if (!safeLink(target)) return null
+  const t = target.replace(/^[a-z][a-z0-9+.-]*:/i, (scheme) => scheme.toLowerCase())
+  return /^(mailto|gemini):/.test(t) ? t : hrefFor(t)
+}
+
+function titled(main) {
+  const h = main.querySelector('h1')
+  if (h) document.title = h.textContent
+}
+
+function showMarkdown(body) {
+  const main = $('page')
+  main.append(...mdNodes(document, body, mdHref))
+  titled(main)
+}
+
+function showText(body) {
+  $('page').append(Object.assign(document.createElement('pre'), { textContent: body }))
 }
 
 function showGemtext(body) {
@@ -47,8 +74,7 @@ function showGemtext(body) {
     }
     main.append(el)
   }
-  const h = main.querySelector('h1')
-  if (h) document.title = h.textContent
+  titled(main)
 }
 
 //  frame.html may load before this script runs, or after, so the HTML is
@@ -96,6 +122,14 @@ $('unlock').addEventListener('submit', async (e) => {
   load()
 })
 
+//  A page's body, shown as render says (lib/urb.js's readUrb).
+function show(render, body) {
+  if (render === 'html') return showHtml(body)
+  if (render === 'md') return showMarkdown(body)
+  if (render === 'text') return showText(body)
+  return showGemtext(body)
+}
+
 async function load() {
   $('addr').value = url
   if (!url) return say('Type an urb:// address.')
@@ -110,8 +144,8 @@ async function load() {
       r = { ok: false, error: e.message || String(e) }
     }
     if (r.ok) {
-      say(`Read as ${r.as}, by ${r.how === 'keen' ? 'remote scry' : 'grubbery peek'}.`)
-      return r.html ? showHtml(r.body) : showGemtext(r.body)
+      say(`Read as ${r.as}, by ${r.how === 'keen' ? 'remote scry' : 'grubbery peek'}${r.mark ? `, %${r.mark}` : ''}.`)
+      return show(r.render || (r.html ? 'html' : 'gmi'), r.body)
     }
     if (r.locked) {
       $('unlock').hidden = false
@@ -126,4 +160,4 @@ async function load() {
 load()
 
 //  For a harness driving the page over the devtools protocol.
-globalThis.reader = { showHtml }
+globalThis.reader = { showHtml, show }
