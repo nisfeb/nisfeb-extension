@@ -28,10 +28,12 @@ function hrefFor(target) {
 }
 
 //  Where a Markdown link goes: as hrefFor, and mail and gemini links as
-//  written. lib/markdown.js has already dropped any other scheme.
+//  written, each scheme in lower case. lib/markdown.js has already
+//  dropped any other scheme.
 function mdHref(target) {
   if (!safeLink(target)) return null
-  return /^(mailto|gemini):/.test(target) ? target : hrefFor(target)
+  const t = target.replace(/^[a-z][a-z0-9+.-]*:/i, (scheme) => scheme.toLowerCase())
+  return /^(mailto|gemini):/.test(t) ? t : hrefFor(t)
 }
 
 function titled(main) {

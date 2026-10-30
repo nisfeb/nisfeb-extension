@@ -4,7 +4,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { markdown, mdNodes, safeLink, spans } from '../lib/markdown.js'
+import { markdown, mdNodes, safeLink, spans, MD_MAX } from '../lib/markdown.js'
 import { renderAs } from '../lib/mesa.mjs'
 
 //  Just enough of a document for mdNodes: elements with a name, children
@@ -96,7 +96,7 @@ test('safeLink: the web, urb://, gemini, mail and paths only', () => {
     assert.equal(safeLink(t), true, t)
   }
   for (const t of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,<script>', 'vbscript:x', '\x01javascript:alert(1)',
-    'java\0script:alert(1)', '//evil.example', '\\\\evil.example', '/\\evil.example', 'HTTP://a.b', 'file:///etc/passwd', 'chrome-extension://x/y']) {
+    'java\0script:alert(1)', '//evil.example', '\\\\evil.example', '/\\evil.example', 'file:///etc/passwd', 'chrome-extension://x/y']) {
     assert.equal(safeLink(t), false, JSON.stringify(t))
   }
 })
@@ -166,7 +166,7 @@ test('markdown: deep nesting stays flat', () => {
   const n = 5000
   const body = [
     '>'.repeat(n) + ' deep',
-    Array.from({ length: n }, (_, i) => ' '.repeat(i) + '- level').join('\n'),
+    Array.from({ length: n }, (_, i) => ' '.repeat(i % 40) + '- level').join('\n'),   //  under MD_MAX
     '',
     '*'.repeat(n) + 'x' + '*'.repeat(n),
     '['.repeat(n) + 'a' + ']'.repeat(n) + '(urb://~zod/x)',
@@ -189,4 +189,32 @@ test('markdown: hostile long lines take linear time', () => {
     markdown(line)
     assert.ok(performance.now() - t < 2000, `${JSON.stringify(line.slice(0, 12))}... took ${performance.now() - t} ms`)
   }
+})
+
+test('safeLink: a control character anywhere is text', () => {
+  for (const t of ['\x01//evil.com', '\x1f//evil.com', '\x00//evil.com', '\x7f//evil.com', ' //evil.com', '/\t/evil.com', 'java\tscript:alert(1)', 'https://a.b/\nx', 'urb://~zod/x\x01']) {
+    assert.equal(safeLink(t), false, JSON.stringify(t))
+  }
+  assert.deepEqual(spans('[x](\x01//evil.com)'), [{ text: 'x' }])
+})
+
+test('safeLink: schemes in any case', () => {
+  for (const t of ['HTTPS://a.b', 'Http://a.b', 'URB://~zod/x', 'Mailto:a@b.c', 'GEMINI://a.b']) assert.equal(safeLink(t), true, t)
+  assert.deepEqual(spans('[s](HTTPS://a.b)'), [{ link: 'HTTPS://a.b', text: 's' }])
+})
+
+test('mdNodes: a page over MD_MAX is one <pre> as written, quickly', () => {
+  const doc = fakeDoc()
+  const body = '[a]('.repeat(Math.ceil((1024 * 1024) / 4))
+  assert.ok(body.length > MD_MAX)
+  const t = performance.now()
+  const nodes = mdNodes(doc, body, hrefAsIs)
+  assert.ok(performance.now() - t < 100, `${performance.now() - t} ms`)
+  assert.equal(nodes.length, 1)
+  assert.equal(nodes[0].name, 'pre')
+  assert.equal(nodes[0].textContent, body)
+  const under = '[a]('.repeat(MD_MAX / 4)
+  const t2 = performance.now()
+  assert.equal(mdNodes(fakeDoc(), under, hrefAsIs)[0].name, 'p')
+  assert.ok(performance.now() - t2 < 1500, `${performance.now() - t2} ms at MD_MAX`)
 })
