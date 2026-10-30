@@ -25,12 +25,13 @@ function show(r) {
     const a = Object.assign(document.createElement('code'), { textContent: addr })
     const meta = Object.assign(document.createElement('div'), {
       className: 'meta',
-      textContent: `revision ${p.rev}, ${new Date(p.at).toLocaleString()}, ${p.body.length} characters`,
+      textContent: `${p.mark === 'html' ? 'HTML' : 'gemtext'}, revision ${p.rev}, ${new Date(p.at).toLocaleString()}, ${p.body.length} characters`,
     })
     const edit = Object.assign(document.createElement('button'), { textContent: 'Edit' })
     edit.addEventListener('click', () => {
       $('name').value = p.name
       $('body').value = p.body
+      $('format').value = p.mark
       $('body').focus()
     })
     const down = Object.assign(document.createElement('button'), { textContent: 'Take down' })
@@ -50,7 +51,7 @@ async function call(m, doing) {
 
 $('put').addEventListener('submit', async (e) => {
   e.preventDefault()
-  const r = await call({ op: 'put', name: $('name').value, body: $('body').value }, 'Publishing')
+  const r = await call({ op: 'put', name: $('name').value, body: $('body').value, mark: $('format').value }, 'Publishing')
   if (r.ok) {
     $('name').value = ''
     $('body').value = ''
