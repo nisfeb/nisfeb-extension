@@ -174,7 +174,9 @@ try {
 
   //  take it down from the worker; a reader with no list cached sees it gone
   const down = await evaluate(`nisfeb.handle(${JSON.stringify({ kind: 'urbPub', op: 'remove', name: 'notes/hello' })})`, w2)
-  check('take down', down.ok && down.pages.length === 0, JSON.stringify(down).slice(0, 300))
+  await evaluate(`nisfeb.handle(${JSON.stringify({ kind: 'urbPub', op: 'remove', name: 'notes/web' })})`, w2)
+  const gone = await evaluate(`nisfeb.handle(${JSON.stringify({ kind: 'urbPub', op: 'list' })})`, w2)
+  check('take down', down.ok && gone.pages.length === 0, JSON.stringify(gone).slice(0, 300))
 } catch (e) {
   check('the run finished', false, e.stack || e.message)
 } finally {
