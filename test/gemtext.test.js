@@ -3,7 +3,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { gemtext, linkTarget, readerPath } from '../lib/gemtext.js'
+import { gemtext, linkTarget, linkHref, readerPath } from '../lib/gemtext.js'
 
 test('gemtext: each kind of line', () => {
   const page = [
@@ -73,4 +73,26 @@ test('linkTarget: other schemes stay text', () => {
 
 test('readerPath: the address travels encoded', () => {
   assert.equal(readerPath('urb://~zod/a b'), 'reader.html?u=urb%3A%2F%2F~zod%2Fa%20b')
+})
+
+test('linkTarget: a control character cannot turn into another ship', () => {
+  const base = 'urb://~sampel-palnet/a'
+  for (const h of ['\x01x:-nec/page', '\x01javascript:alert(1)', '\x01//evil', '\\\\evil.example/x', '/\\evil']) {
+    assert.equal(linkTarget(base, h), '', JSON.stringify(h))
+  }
+})
+
+test('linkTarget: schemes are lower-cased, ship names checked', () => {
+  assert.equal(linkTarget('urb://~zod/a', 'URB://~nec/x'), 'urb://~nec/x')
+  assert.equal(linkTarget('urb://~zod/a', 'HTTPS://example.com/x'), 'https://example.com/x')
+  assert.equal(linkTarget('urb://~zod/a', 'urb://~zodi/x'), '')
+})
+
+test('linkHref: mail and gemini links as written, as in Markdown', () => {
+  const base = 'urb://~zod/a'
+  assert.equal(linkHref(base, 'MAILTO:a@b.c'), 'mailto:a@b.c')
+  assert.equal(linkHref(base, 'gemini://x/y'), 'gemini://x/y')
+  assert.equal(linkHref(base, 'urb://~nec/b'), readerPath('urb://~nec/b'))
+  assert.equal(linkHref(base, '\x01x:-nec/page'), null)
+  assert.equal(linkHref(base, 'javascript:alert(1)'), null)
 })
