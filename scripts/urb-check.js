@@ -17,6 +17,12 @@
 //  the page holds) name the page. BROWSER names the binary. Each run mines
 //  a comet in its scratch profile, and the ship read keeps a record of it.
 //
+//  FLEET=1 reads from hoon-development's fleet instead, so routine runs
+//  leave no comet on a live ship: the relay is `-relay-fake`, the engine
+//  runs on the fake network (urbFake), and PAGE defaults to
+//  urb://~hus/fleet-check, which lattice serves on ~hus in the fleet set
+//  `furum` (its snapshot `hus-lattice`: `fleet reset furum hus-lattice`).
+//
 //  FURUM=~host/board adds furum on a fake network: a second relay with
 //  -relay-fake, the engine's test-only urbFake, and a fake moon named from
 //  the clock (the host remembers every moon it met, and this profile is
@@ -36,8 +42,9 @@ import { fakeKeyfile, shipName } from '../lib/mesa.mjs'
 
 const URB_FETCH = process.env.URB_FETCH
 const FURUM = process.env.FURUM
-const PAGE = process.env.PAGE || 'urb://~ricsul-bilwyt/lattice-agent-wiki'
-const WANT = process.env.WANT || 'Bootstrap lattice'
+const FLEET = Boolean(process.env.FLEET)
+const PAGE = process.env.PAGE || (FLEET ? 'urb://~hus/fleet-check' : 'urb://~ricsul-bilwyt/lattice-agent-wiki')
+const WANT = process.env.WANT || (FLEET ? 'lattice 81 on the furum fleet set' : 'Bootstrap lattice')
 if (!URB_FETCH) throw new Error('URB_FETCH (the urb-fetch binary, for its -relay) is required')
 
 //  ── the relay ────────────────────────────────────────────────────────
@@ -55,7 +62,7 @@ async function startRelay(...flags) {
   })
   return { proc, state, url: `ws://127.0.0.1:${port}/` }
 }
-const relays = [await startRelay()]
+const relays = [await startRelay(...(FLEET ? ['-relay-fake'] : []))]
 const RELAY = relays[0].url
 if (FURUM) relays.push(await startRelay('-relay-fake'))
 
@@ -158,7 +165,7 @@ async function textOf(sessionId, want, ms) {
 //  ── the runs ─────────────────────────────────────────────────────────
 
 try {
-  await evaluate(`chrome.storage.local.set(${JSON.stringify({ urbReader: 'browser', urbRelay: RELAY })})`, w)
+  await evaluate(`chrome.storage.local.set(${JSON.stringify({ urbReader: 'browser', urbRelay: RELAY, ...(FLEET ? { urbFake: true } : {}) })})`, w)
 
   //  the reader page: a fresh comet, mined here, meets the ship
   const t0 = Date.now()
