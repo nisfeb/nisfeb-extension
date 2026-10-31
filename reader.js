@@ -5,8 +5,8 @@
 //  frame.html, a sandboxed page with an opaque origin, where the
 //  publisher's scripts run but reach nothing of the extension's.
 
-import { gemtext, linkTarget, readerPath } from './lib/gemtext.js'
-import { mdNodes, safeLink } from './lib/markdown.js'
+import { gemtext, linkHref, linkTarget, readerPath } from './lib/gemtext.js'
+import { mdNodes } from './lib/markdown.js'
 
 //  A read gives up after a minute at most. A ship catching up on this
 //  browser's comet can take a minute or two, so the page asks again.
@@ -20,21 +20,7 @@ function say(text, bad = false) {
   $('status').classList.toggle('bad', bad)
 }
 
-//  Where a link goes from this page: another urb:// page in this reader,
-//  or a web page. null leaves it as text.
-function hrefFor(target) {
-  const t = linkTarget(url, target)
-  return t.startsWith('urb://') ? readerPath(t) : t || null
-}
-
-//  Where a Markdown link goes: as hrefFor, and mail and gemini links as
-//  written, each scheme in lower case. lib/markdown.js has already
-//  dropped any other scheme.
-function mdHref(target) {
-  if (!safeLink(target)) return null
-  const t = target.replace(/^[a-z][a-z0-9+.-]*:/i, (scheme) => scheme.toLowerCase())
-  return /^(mailto|gemini):/.test(t) ? t : hrefFor(t)
-}
+const mdHref = (target) => linkHref(url, target)
 
 function titled(main) {
   const h = main.querySelector('h1')
@@ -60,7 +46,7 @@ function showGemtext(body) {
       for (const item of b.items) el.append(Object.assign(document.createElement('li'), { textContent: item }))
     } else if (b.kind === 'link') {
       el = document.createElement('p')
-      const href = hrefFor(b.href)
+      const href = mdHref(b.href)
       if (href) {
         const a = Object.assign(document.createElement('a'), { href, textContent: b.label })
         if (!href.startsWith('reader.html')) a.rel = 'noopener noreferrer'
@@ -100,7 +86,8 @@ function showHtml(body) {
 //  A link clicked in the frame, handed up by frame.js.
 addEventListener('message', (e) => {
   if (e.source !== $('frame').contentWindow || typeof (e.data && e.data.open) !== 'string') return
-  const href = hrefFor(e.data.open)
+  const t = linkTarget(url, e.data.open)
+  const href = t.startsWith('urb://') ? readerPath(t) : t
   if (href) location.href = href
 })
 
