@@ -13,7 +13,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `lib/ship.js` | The ship client (a port of auspex's `thunderbird/lib/api.js`) and the pure helpers the tests pin: poke bodies, chat lists, `explain()` for refusals. |
 | `lib/links.js` | Urbit link detection for the content script. A classic script, since content scripts cannot be modules. |
 | `lib/urb.js` | Reading `urb://` pages here in the browser: the worker's one engine (libmesa as wasm), its state in IndexedDB, and the relay it sends through. |
-| `lib/mesa.mjs`, `lib/mesa.wasm` | libmesa's engine and lattice's page reader, vendored from urb-fetch's `wasm/` at the commit the file's header names. Change them there, then copy both. |
+| `lib/mesa.mjs`, `lib/mesa.wasm` | libmesa's engine and lattice's page reader: urb-fetch's Rust core built as wasm, with its JS shim. Staged from urb-fetch by `shim/build.sh <this repo>/lib`, with `pub.mjs`, `furum.mjs`, `forum.mjs`, `gemtext.js`, `markdown.js`, `render.js`, `render-wasm.js` and `wasi.js` (urb-fetch `docs/rust-core.md`, M6). Change them there, then stage them again. |
 | `lib/gemtext.js` | The reader page's pure parts: gemtext as blocks, and where a page's links go. |
 | `lib/markdown.js` | A `%md` page for the reader: urb-fetch's Markdown subset as blocks, built as nodes with text set (`mdNodes`), and its link allowlist (`safeLink`). Nothing nests. |
 | `lib/seal.js` | A secret under a passphrase (PBKDF2-SHA256, AES-GCM): the moon's key. |
