@@ -102,7 +102,7 @@ test('itemText reads a 256 KB hostile line in linear time', () => {
   assert.ok(performance.now() - t < 100, 'itemText took over 100 ms')
 })
 
-test('lib/markdown.js reads the hostile item line in linear time', { todo: 'ITEM to itemText in lib/markdown.js' }, () => {
+test('lib/markdown.js reads the hostile item line in linear time', () => {
   const t = performance.now()
   markdown('- ' + ' '.repeat(20_000) + 'a\r')
   assert.ok(performance.now() - t < 100, 'markdown took over 100 ms')
