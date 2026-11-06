@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- The frame may show only the extension's own frame pages: a published
+     page's script cannot move it to another host. -->
+<meta http-equiv="Content-Security-Policy" content="frame-src 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>urb://</title>
 <style>
@@ -22,6 +25,7 @@
 <header>
   <form id="go"><input id="addr" aria-label="An urb:// address" placeholder="urb://~sampel-palnet/page" spellcheck="false" autocomplete="off"></form>
   <span id="status" role="status"></span>
+  <button id="outside" type="button" hidden title="The page asked for images, styles or data from other hosts. Loading them tells those hosts this computer's address.">Load outside content</button>
   <form id="unlock" hidden autocomplete="off"><input id="pass" type="password" aria-label="The moon's passphrase" placeholder="the moon's passphrase"> <button>Unlock</button></form>
 </header>
 <main id="page"></main>

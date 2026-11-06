@@ -216,7 +216,13 @@ try {
   check('frame.html: an opaque origin, not the extension\'s', shown.endsWith('| null'), shown)
   const reach = await inFrame('typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id ? "extension reachable" : "sealed"')
   check('frame.html: the page cannot reach the extension', reach === 'sealed', reach)
-  await inFrame('document.getElementById("go").click()')
+  //  a real click: the reader page follows a link only under one, so a
+  //  script's click() in the frame would not do
+  const box = JSON.parse(await evaluate('JSON.stringify(document.getElementById("frame").getBoundingClientRect())', p))
+  const link = JSON.parse(await inFrame('JSON.stringify(document.getElementById("go").getBoundingClientRect())'))
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await cdp('Input.dispatchMouseEvent', { type, x: box.x + link.x + 2, y: box.y + link.y + 2, button: 'left', clickCount: 1 }, p)
+  }
   let at = ''
   for (let i = 0; i < 20 && !at.includes('elsewhere'); i++) {
     await sleep(250)

@@ -1,4 +1,9 @@
 <!doctype html>
 <meta charset="utf-8">
+<!-- A published page loads nothing from outside: no image, style, font,
+     fetch or socket reaches another host, so its publisher never learns
+     this reader's address. The reader offers frame-open.html, the same
+     page without this policy, once the owner asks for it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src data: blob:; frame-src data: blob:; worker-src data: blob:; form-action 'none'">
 <title>urb://</title>
 <script src="frame.js"></script>
