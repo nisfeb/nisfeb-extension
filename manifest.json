@@ -9,7 +9,7 @@
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'" },
-  "sandbox": { "pages": ["frame.html"] },
+  "sandbox": { "pages": ["frame.html", "frame-open.html"] },
   "action": {
     "default_title": "Nisfeb",
     "default_popup": "popup.html",

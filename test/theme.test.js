@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { lerp, css, lum, themeVars, activeOf, accentOf, wantsProfile, profileHex, lookOf, lookVars, lookSaid, fontOf, fontStack, nicknameOf, ownNickname, displayName, BUILT_IN, VARS } from '../lib/theme.js'
+import { lerp, css, lum, themeVars, activeOf, accentOf, profileHex, lookOf, lookVars, lookSaid, fontOf, fontStack, nicknameOf, ownNickname, displayName, BUILT_IN, VARS } from '../lib/theme.js'
 
 //  Talon's ThemeSettings, as SettingsSyncImpl writes it: the value of
 //  each entry is the JSON as a string.
@@ -53,8 +53,7 @@ test('the accent: off, brand, custom or the profile colour', () => {
   assert.deepEqual(accentOf({ enabled: true, mode: 'Custom', customHex: '#ff0000' }), [255, 0, 0])
   assert.deepEqual(accentOf({ enabled: true, mode: 'Profile' }, '#00ff00'), [0, 255, 0])
   assert.equal(accentOf({ enabled: true, mode: 'Profile' }, null), null)
-  assert.ok(wantsProfile({ enabled: true, mode: 'Whatever' }), 'an unknown mode reads as Profile')
-  assert.ok(!wantsProfile({ enabled: true, mode: 'Custom' }))
+  assert.deepEqual(accentOf({ enabled: true, mode: 'Whatever' }, '#00ff00'), [0, 255, 0], 'an unknown mode reads as Profile')
   assert.equal(profileHex({ color: { type: 'tint', value: '0xff.5050' } }), '#ff5050')
   assert.equal(profileHex({ color: '0x0.ffff' }), '#00ffff')
   assert.equal(profileHex({ color: null }), null)

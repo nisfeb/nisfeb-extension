@@ -12,6 +12,7 @@
     "urb": "node scripts/urb-check.js",
     "urb:fleet": "FLEET=1 node scripts/urb-check.js",
     "pub": "node scripts/pub-check.js",
-    "marks": "node scripts/marks-check.js"
+    "marks": "node scripts/marks-check.js",
+    "frame": "node scripts/frame-check.js"
   }
 }

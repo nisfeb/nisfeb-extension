@@ -3,10 +3,21 @@
 //  publisher's scripts run, but cannot reach the extension, its storage or
 //  its worker. A link clicked here goes up to the reader page, which opens
 //  an urb:// address in itself and a web address in the tab.
+//
+//  frame.html's own policy refuses anything from outside; frame-open.html
+//  is the same page without it. A refused load is told to the reader page
+//  once, so it can offer to load the page again with outside content.
 
 addEventListener('message', (e) => {
   if (e.source !== parent || typeof (e.data && e.data.html) !== 'string') return
   document.open()
+  //  after open, which erases listeners, and before the page's own nodes
+  let told = false
+  document.addEventListener('securitypolicyviolation', (v) => {
+    if (told || !/^(https?|wss?):/i.test(v.blockedURI)) return
+    told = true
+    parent.postMessage({ outside: true }, '*')
+  })
   document.write(e.data.html)
   document.close()
   parent.postMessage({ shown: true }, '*')

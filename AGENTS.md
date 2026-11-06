@@ -33,7 +33,7 @@ A Manifest V3 extension for Brave and Chrome that talks to the owner's Urbit shi
 | `popup.*`, `options.*`, `today.*` | Extension pages. |
 | `content.js` | The optional clickable-links script, registered from Options, never from the manifest. |
 | `test/*.test.js` | `node --test` unit tests of the pure parts. |
-| `scripts/smoke.js`, `scripts/today-check.js`, `scripts/urb-check.js`, `scripts/pub-check.js` | Headless Brave runs: against a real dev ship (needs a cookie), against a stand-in ship (needs nothing), the in-browser `urb://` reader against a live ship through a relay of its own, and publishing from this browser read by Lattice on a fake ship. |
+| `scripts/smoke.js`, `scripts/today-check.js`, `scripts/urb-check.js`, `scripts/pub-check.js`, `scripts/frame-check.js` | Headless Brave runs: against a real dev ship (needs a cookie), against a stand-in ship (needs nothing), the in-browser `urb://` reader against a live ship through a relay of its own, publishing from this browser read by Lattice on a fake ship, and the reader's frame against a hostile page (no ship). |
 
 ## Running things
 
@@ -74,7 +74,7 @@ Every HTTP request to an app is an event on the owner's ship and takes its one t
 - A moon's key is sealed in `storage.local` and, once unlocked, held only in `storage.session` (memory, trusted contexts). Only the worker unseals it; Options and the reader page send what was typed and keep nothing. Never log it or return it in a message.
 - A moon may start from empty state only once: its database's `meta` holds `fresh` until its first commit is saved. Never clear a moon's rows to "reset" it; that replays old messages at every ship it spoke to. Removing it is the only reset, and it then needs a breach.
 - `storage.local` `urbFake` runs the engine on a fake network (`urbit -F`). It is for the harness only: no Options control, and never set it in a real profile.
-- The extension pages' policy allows `'wasm-unsafe-eval'`, for libmesa in the worker. A published page's HTML runs only in `frame.html`, a manifest sandbox page: an opaque origin, no extension APIs, and links handed up to the reader page by message.
+- The extension pages' policy allows `'wasm-unsafe-eval'`, for libmesa in the worker. A published page's HTML runs only in `frame.html`, a manifest sandbox page: an opaque origin, no extension APIs, and links handed up to the reader page by message. `frame.html`'s own policy loads nothing from outside (`default-src 'none'`), so a publisher never learns the reader's address; `frame-open.html` is the same page without it, shown only when the owner presses "Load outside content". The reader page's `frame-src 'self'` keeps a page's script from moving the frame elsewhere, and it follows a link handed up only under a click (`navigator.userActivation`). `npm run frame` checks all of it in a headless browser.
 - Ask for a host permission under the user's click, for the one origin needed. Nothing broad in the manifest.
 - `manifest.json` has no `key`, so the extension's id, and the day page's address, come from the folder's path. Adding a `key` would change the address everyone pasted into Brave's settings.
 

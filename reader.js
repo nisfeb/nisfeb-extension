@@ -66,10 +66,20 @@ function showGemtext(body) {
 //  frame.html may load before this script runs, or after, so the HTML is
 //  sent until the frame says it is shown. A later copy finds the frame's
 //  listener gone (document.open erases it). Resolves once shown.
+//
+//  frame.html loads nothing from outside. When the page asks for
+//  something it refused, a button offers the page again in
+//  frame-open.html, which loads it. Only a click here does that: the
+//  frame cannot press a button on this page.
 function showHtml(body) {
   const f = $('frame')
   $('page').hidden = true
   f.hidden = false
+  $('outside').onclick = () => {
+    $('outside').hidden = true
+    f.src = 'frame-open.html'
+    showHtml(body)
+  }
   return new Promise((resolve) => {
     const send = () => f.contentWindow.postMessage({ html: body }, '*')
     const again = setInterval(send, 300)
@@ -83,9 +93,19 @@ function showHtml(body) {
   })
 }
 
-//  A link clicked in the frame, handed up by frame.js.
+//  The frame's word that it refused something from outside.
+addEventListener('message', (e) => {
+  if (e.source !== $('frame').contentWindow || !(e.data && e.data.outside === true)) return
+  if (!/frame\.html$/.test($('frame').src)) return
+  $('outside').hidden = false
+})
+
+//  A link clicked in the frame, handed up by frame.js. The page's own
+//  script can send this message too, so it is followed only under a
+//  click: a click in the frame activates this page as well.
 addEventListener('message', (e) => {
   if (e.source !== $('frame').contentWindow || typeof (e.data && e.data.open) !== 'string') return
+  if (!navigator.userActivation.isActive) return
   const t = linkTarget(url, e.data.open)
   const href = t.startsWith('urb://') ? readerPath(t) : t
   if (href) location.href = href
